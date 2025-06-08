@@ -1,0 +1,45 @@
+{
+  "name": "pordosol-language-server",
+  "displayName": "Por Do Sol Language Server",
+  "description": "Language Server inteligente para Por Do Sol",
+  "version": "1.0.0",
+  "publisher": "adriano-severino",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:pordosol"
+  ],
+  "main": "./client/out/extension",
+  "contributes": {
+    "languages": [
+      {
+        "id": "pordosol",
+        "aliases": [
+          "Por Do Sol",
+          "pordosol"
+        ],
+        "extensions": [
+          ".pr"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ]
+  }, 
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "npm run clean && npm run build",
+    "build": "tsc -b --force",
+    "watch": "tsc -b -w",
+    "clean": "npx rimraf client/out server/out out",
+    "postinstall": "cd client && npm install && cd ../server && npm install && cd .."
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.30",
+    "rimraf": "^6.0.1",
+    "typescript": "^5.8.3"
+  }
+}
