@@ -4,6 +4,10 @@
   "description": "Language Server inteligente para Por Do Sol",
   "version": "1.0.0",
   "publisher": "adriano-severino",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Adriano-Severino/pordosol-language-server.git"
+  },
   "engines": {
     "vscode": "^1.74.0"
   },

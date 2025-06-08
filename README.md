@@ -46,3 +46,18 @@ Servidor de Linguagem (LSP) inteligente para a linguagem Por Do Sol.
 
 ## Licença
 Este projeto está licenciado sob a Licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+## Exemplo de código Por Do Sol
+
+```pordosol
+// Exemplo simples de código Por Do Sol
+inicio
+    inteiro idade = 25
+    texto nome = "joana"
+    se (idade >= 18) {
+        escreva("Maior de idade: " + nome)
+    } senao {
+        escreva("Menor de idade: " + nome)
+    }
+fim
+```
