@@ -597,26 +597,40 @@ function getClassMembers(text: string, position: Position): CompletionItem[] {
     return [];
 }
 
-// VALIDAÇÃO EXPANDIDA
+// VALIDAÇÃO EXPANDIDA// VALIDAÇÃO EXPANDIDA E CORRIGIDA
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     const settings = await getDocumentSettings(textDocument.uri);
     const text = textDocument.getText();
     const diagnostics: Diagnostic[] = [];
     const lines = text.split('\n');
     
+    // Processar o texto como declarações completas, não linha por linha
+    const fullText = text.replace(/\s+/g, ' ').trim();
+    
     lines.forEach((line: string, index: number) => {
         const trimmed = line.trim();
         
-        // Validações existentes
-        if (trimmed && 
-            (trimmed.includes('imprima(') || 
-             trimmed.match(/^(inteiro|texto|booleano|var)\s+\w+/) ||
-             trimmed.includes(' = ')) &&
-            !trimmed.endsWith(';') && 
-            !trimmed.endsWith('{') &&
-            !trimmed.endsWith('}') &&
-            !trimmed.startsWith('//')) {
+        // Pular linhas vazias e comentários
+        if (!trimmed || trimmed.startsWith('//')) {
+            return;
+        }
+        
+        // Verificar se é uma linha que claramente deve terminar com ;
+        const shouldEndWithSemicolon = (
+            // Comando imprima completo em uma linha
+            (trimmed.includes('imprima(') && trimmed.includes(')') && !trimmed.endsWith(';')) ||
             
+            // Declaração de variável simples (uma linha só)
+            (trimmed.match(/^(inteiro|texto|booleano|var)\s+\w+\s*=\s*[^,\n]+$/) && !trimmed.endsWith(';')) ||
+            
+            // Atribuição simples (uma linha só)
+            (trimmed.match(/^\w+\s*=\s*[^,\n]+$/) && !trimmed.endsWith(';')) ||
+            
+            // Chamada de função simples (uma linha só)
+            (trimmed.match(/^\w+\.\w+\([^)]*\)$/) && !trimmed.endsWith(';'))
+        );
+        
+        if (shouldEndWithSemicolon) {
             diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 range: {
@@ -627,6 +641,40 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
                 source: 'Por Do Sol Language Server',
                 code: 'missing-semicolon'
             });
+        }
+        
+        // Validação para declarações multi-linha (só verificar a última linha)
+        if (trimmed.endsWith(');') && !trimmed.endsWith(';;')) {
+            // OK - declaração multi-linha terminada corretamente
+        } else if (trimmed.match(/^(inteiro|texto|booleano)\s+\w+\s*=\s*novo\s+\w+\s*\([^)]*$/) && 
+                   index < lines.length - 1) {
+            // Verificar se a declaração multi-linha termina corretamente
+            let nextLineIndex = index + 1;
+            let found = false;
+            
+            while (nextLineIndex < lines.length && !found) {
+                const nextLine = lines[nextLineIndex].trim();
+                if (nextLine.includes(');')) {
+                    found = true;
+                } else if (nextLine && !nextLine.includes(',') && !nextLine.includes('"')) {
+                    // Linha que não faz parte da declaração
+                    break;
+                }
+                nextLineIndex++;
+            }
+            
+            if (!found) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: {
+                        start: { line: index, character: 0 },
+                        end: { line: index, character: line.length }
+                    },
+                    message: 'Declaração multi-linha deve terminar com ponto e vírgula (;)',
+                    source: 'Por Do Sol Language Server',
+                    code: 'missing-semicolon-multiline'
+                });
+            }
         }
 
         // Validação de interpolação de strings

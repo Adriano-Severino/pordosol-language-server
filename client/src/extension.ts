@@ -10,12 +10,12 @@ import {
 let client: LanguageClient;
 
 export function activate(context: ExtensionContext) {
-    // Caminho do servidor - baseado no search result [2]
+    // Caminho do servidor
     const serverModule = context.asAbsolutePath(
         path.join('server', 'out', 'server.js')
     );
 
-    // Opções de debug para desenvolvimento
+    // Opções de debug
     const debugOptions = { execArgv: ['--nolazy', '--inspect=6009'] };
 
     // Configuração do servidor
@@ -28,11 +28,10 @@ export function activate(context: ExtensionContext) {
         }
     };
 
-    // Configuração do cliente - registrar para arquivos .pr
+    // Configuração do cliente
     const clientOptions: LanguageClientOptions = {
         documentSelector: [{ scheme: 'file', language: 'pordosol' }],
         synchronize: {
-            // Notificar sobre mudanças em arquivos de configuração
             fileEvents: workspace.createFileSystemWatcher('**/.pordosolrc')
         }
     };
@@ -45,7 +44,7 @@ export function activate(context: ExtensionContext) {
         clientOptions
     );
 
-    // Iniciar o cliente (isso também inicia o servidor)
+    // Iniciar o cliente
     client.start();
 }
 

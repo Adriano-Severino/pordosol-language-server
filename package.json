@@ -1,7 +1,7 @@
 {
     "name": "pordosol-language-server",
-    "displayName": "🌅 Por Do Sol Language Server",
-    "description": "Language Server inteligente para Por Do Sol com OOP, Ownership e Interpolação",
+    "displayName": "🌅 Por Do Sol - Complete Language Support",
+    "description": "Suporte completo para linguagem Por Do Sol: syntax highlighting, LSP, autocompletar e validação",
     "version": "2.0.0",
     "publisher": "adriano-severino",
     "repository": {
@@ -14,7 +14,7 @@
     "categories": [
         "Programming Languages",
         "Linters",
-        "Other"
+        "Snippets"
     ],
     "keywords": [
         "português",
@@ -26,7 +26,7 @@
     "activationEvents": [
         "onLanguage:pordosol"
     ],
-    "main": "./client/out/extension",
+    "main": "./client/out/extension.js",
     "contributes": {
         "languages": [
             {
@@ -41,6 +41,13 @@
                     ".pds"
                 ],
                 "configuration": "./language-configuration.json"
+            }
+        ],
+        "grammars": [
+            {
+                "language": "pordosol",
+                "scopeName": "source.pordosol",
+                "path": "./syntaxes/pordosol.tmLanguage.json"
             }
         ],
         "configuration": {

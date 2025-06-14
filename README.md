@@ -1,6 +1,17 @@
-# Por Do Sol Language Server
+# 🌅 Por Do Sol Language Server
 
-Servidor de Linguagem (LSP) inteligente para a linguagem Por Do Sol.
+Servidor de Linguagem (LSP) inteligente para a linguagem Por Do Sol
+Extensão do **Visual Studio Code** para a linguagem de programação **Por Do Sol** — uma linguagem moderna orientada a objetos em português brasileiro.
+
+## ✨ Novas Características
+
+- ✅ **Orientação a Objetos completa:** classes, herança, encapsulamento
+- ✅ **Sistema de Ownership:** inspirado no Rust para segurança de memória
+- ✅ **Interpolação de Strings:** `$"Olá {nome}, você tem {idade} anos"`
+- ✅ **Namespaces:** organização modular do código
+- ✅ **Construtores:** estilo C# com parâmetros padrão
+- ✅ **Inferência de tipos:** declaração com `var`
+- ✅ **Compilação LLVM:** performance otimizada
 
 ## Funcionalidades
 - Autocompletar inteligente
@@ -122,3 +133,29 @@ se (a > b) {
 }
 fim
 ```
+
+## 🧩 Snippets Avançados
+
+- `classe` — Classe completa com construtor e métodos
+- `funcao` — Função com tipo de retorno
+- `espaco` — Namespace
+- `interpolacao` — String interpolada
+- `novo` — Criação de objeto
+- `main` — Função principal
+
+## 🛠️ Recursos
+
+- **Syntax Highlighting** — Palavras-chave coloridas
+- **Auto-closing** — Fechamento automático de `{}`, `()`, `""`
+- **Comment Toggle** — `Ctrl+/` para comentários
+- **Code Folding** — Dobrar blocos de código
+
+
+## 👨‍💻 Desenvolvedor
+
+Criado por **Adriano Severino** como parte do desenvolvimento de uma linguagem de programação educacional em português brasileiro.
+
+
+## 📄 Licença
+
+MIT License
