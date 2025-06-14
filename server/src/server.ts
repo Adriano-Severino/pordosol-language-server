@@ -21,22 +21,16 @@ import {
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
 
-// Criar conexão usando IPC do Node.js
 const connection = createConnection(ProposedFeatures.all);
-
-// Gerenciador de documentos de texto
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 
-// Capabilities do cliente
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
 
-// Inicialização do servidor
 connection.onInitialize((params: InitializeParams) => {
     const capabilities = params.capabilities;
 
-    // Verificar capabilities do cliente
     hasConfigurationCapability = !!(
         capabilities.workspace && !!capabilities.workspace.configuration
     );
@@ -52,14 +46,11 @@ connection.onInitialize((params: InitializeParams) => {
     const result: InitializeResult = {
         capabilities: {
             textDocumentSync: TextDocumentSyncKind.Incremental,
-            // Autocomplete com trigger characters
             completionProvider: {
                 resolveProvider: true,
-                triggerCharacters: ['.', ' ', '(', '=', 's', 'e', 'i', 't', 'b']
+                triggerCharacters: ['.', ' ', '(', '=', 's', 'e', 'i', 't', 'b', 'c', 'f', 'n', '$', '{']
             },
-            // Hover para informações
             hoverProvider: true,
-            // Assinatura de funções
             signatureHelpProvider: {
                 triggerCharacters: ['(', ',']
             }
@@ -87,21 +78,21 @@ connection.onInitialized(() => {
     }
 });
 
-// Configurações da linguagem Por Do Sol
 interface PorDoSolSettings {
     maxNumberOfProblems: number;
     enableStrictMode: boolean;
     showWarnings: boolean;
+    enableOwnershipAnalysis: boolean;
 }
 
-const defaultSettings: PorDoSolSettings = { 
+const defaultSettings: PorDoSolSettings = {
     maxNumberOfProblems: 1000,
     enableStrictMode: true,
-    showWarnings: true
+    showWarnings: true,
+    enableOwnershipAnalysis: true
 };
 let globalSettings: PorDoSolSettings = defaultSettings;
 
-// Cache de configurações por documento
 const documentSettings: Map<string, Promise<PorDoSolSettings>> = new Map();
 
 connection.onDidChangeConfiguration(change => {
@@ -112,7 +103,6 @@ connection.onDidChangeConfiguration(change => {
             (change.settings.pordosolLanguageServer || defaultSettings)
         );
     }
-    // Revalidar todos os documentos
     documents.all().forEach(validateTextDocument);
 });
 
@@ -131,12 +121,11 @@ function getDocumentSettings(resource: string): Promise<PorDoSolSettings> {
     return result;
 }
 
-// Remover configurações quando documento é fechado
 documents.onDidClose(e => {
     documentSettings.delete(e.document.uri);
 });
 
-// AUTOCOMPLETAR INTELIGENTE PARA POR DO SOL
+// AUTOCOMPLETAR AVANÇADO COM ORIENTAÇÃO A OBJETOS
 connection.onCompletion(
     (textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
         const document = documents.get(textDocumentPosition.textDocument.uri);
@@ -153,167 +142,395 @@ connection.onCompletion(
 
         const completions: CompletionItem[] = [];
 
-        // Palavras-chave principais da linguagem Por Do Sol
+        // Palavras-chave principais expandidas
         const keywords = [
             {
                 label: 'se',
                 kind: CompletionItemKind.Keyword,
-                insertText: 'se ${1:condicao} então {\n\t$2\n}',
+                insertText: 'se (${1:condicao}) {\n\t$2\n}',
                 documentation: 'Estrutura condicional se-então-senão da linguagem Por Do Sol',
-                detail: 'Condicional - Por Do Sol'
-            },
-            {
-                label: 'enquanto',
-                kind: CompletionItemKind.Keyword,
-                insertText: 'enquanto ${1:condicao} {\n\t$2\n}',
-                documentation: 'Loop enquanto condição for verdadeira na linguagem Por Do Sol',
-                detail: 'Loop - Por Do Sol'
-            },
-            {
-                label: 'imprima',
-                kind: CompletionItemKind.Function,
-                insertText: 'imprima(${1:valor});',
-                documentation: 'Função para imprimir valores na tela (linguagem Por Do Sol)',
-                detail: 'Função de saída - Por Do Sol'
-            },
-            {
-                label: 'então',
-                kind: CompletionItemKind.Keyword,
-                insertText: 'então',
-                documentation: 'Usado após condição no comando se (linguagem Por Do Sol)',
-                detail: 'Palavra-chave condicional'
+                detail: 'Condicional - Por Do Sol',
+                data: 1
             },
             {
                 label: 'senão',
                 kind: CompletionItemKind.Keyword,
                 insertText: 'senão {\n\t$1\n}',
                 documentation: 'Bloco alternativo da estrutura se (linguagem Por Do Sol)',
-                detail: 'Condicional alternativa'
+                detail: 'Condicional alternativa',
+                data: 11
+            },
+            {
+                label: 'enquanto',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'enquanto (${1:condicao}) {\n\t$2\n}',
+                documentation: 'Loop enquanto condição for verdadeira na linguagem Por Do Sol',
+                detail: 'Loop - Por Do Sol',
+                data: 12
+            },
+            {
+                label: 'para',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'para (${1:inteiro i = 0}; ${2:i < 10}; ${3:i = i + 1}) {\n\t$4\n}',
+                documentation: 'Loop for com inicialização, condição e incremento',
+                detail: 'Loop For - Por Do Sol',
+                data: 13
+            },
+            {
+                label: 'imprima',
+                kind: CompletionItemKind.Function,
+                insertText: 'imprima(${1:valor});',
+                documentation: 'Função para imprimir valores na tela (linguagem Por Do Sol)',
+                detail: 'Função de saída - Por Do Sol',
+                data: 14
+            },
+            {
+                label: 'funcao',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'funcao ${1:nome}(${2:parametros}) => ${3:tipo} {\n\t${4:// código}\n\tretorne ${5:valor};\n}',
+                documentation: 'Declaração de função com tipo de retorno',
+                detail: 'Função - Por Do Sol',
+                data: 3
+            },
+            {
+                label: 'retorne',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'retorne ${1:valor};',
+                documentation: 'Retorna valor de uma função',
+                detail: 'Return - Por Do Sol',
+                data: 15
+            },
+            {
+                label: 'var',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'var ${1:nome} = ${2:valor};',
+                documentation: 'Declaração com inferência de tipo',
+                detail: 'Inferência de tipo - Por Do Sol',
+                data: 16
             }
         ];
 
-        // Tipos de dados
+        // Palavras-chave OOP CORRIGIDAS SEM PALAVRA CONSTRUTOR
+        const oopKeywords = [
+            {
+                label: 'classe',
+                kind: CompletionItemKind.Class,
+                insertText: 'classe ${1:Nome} {\n\t${2:publico} ${3:inteiro} ${4:propriedade};\n\n\t${1:Nome}(${5:parametros}) {\n\t\t${6:// inicialização}\n\t}\n\n\t${2:publico} ${7:vazio} ${8:metodo}() {\n\t\t${9:// código}\n\t}\n}',
+                documentation: 'Declaração de classe com propriedades e métodos (sem palavra construtor)',
+                detail: 'Classe - Por Do Sol',
+                data: 2
+            },
+            {
+                label: 'construtor',
+                kind: CompletionItemKind.Constructor,
+                insertText: '${1:NomeClasse}(${2:parametros}) {\n\t${3:// inicialização}\n}',
+                documentation: 'Método construtor da classe (apenas nome da classe)',
+                detail: 'Construtor - Por Do Sol',
+                data: 17
+            },
+            {
+                label: 'este',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'este.',
+                documentation: 'Referência à instância atual do objeto (this)',
+                detail: 'Referência - Por Do Sol',
+                data: 18
+            },
+            {
+                label: 'novo',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'novo ${1:Classe}(${2:argumentos})',
+                documentation: 'Criação de nova instância de classe',
+                detail: 'Instanciação - Por Do Sol',
+                data: 19
+            },
+            {
+                label: 'espaco',
+                kind: CompletionItemKind.Module,
+                insertText: 'espaco ${1:Nome} {\n\t${2:// conteúdo}\n}',
+                documentation: 'Declaração de namespace/módulo',
+                detail: 'Namespace - Por Do Sol',
+                data: 20
+            }
+        ];
+
+        // Modificadores de acesso
+        const accessModifiers = [
+            {
+                label: 'publico',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'publico ',
+                documentation: 'Modificador de acesso público',
+                detail: 'Acesso - Por Do Sol',
+                data: 21
+            },
+            {
+                label: 'privado',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'privado ',
+                documentation: 'Modificador de acesso privado',
+                detail: 'Acesso - Por Do Sol',
+                data: 22
+            },
+            {
+                label: 'protegido',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'protegido ',
+                documentation: 'Modificador de acesso protegido',
+                detail: 'Acesso - Por Do Sol',
+                data: 23
+            }
+        ];
+
+        // Tipos de dados expandidos
         const types = [
             {
                 label: 'inteiro',
                 kind: CompletionItemKind.TypeParameter,
                 insertText: 'inteiro ${1:nome} = ${2:0};',
-                documentation: 'Tipo de dados para números inteiros de 64 bits (linguagem Por Do Sol)',
-                detail: 'Tipo de dados - Por Do Sol'
+                documentation: 'Tipo de dados para números inteiros de 64 bits',
+                detail: 'Tipo de dados - Por Do Sol',
+                data: 24
             },
             {
                 label: 'texto',
                 kind: CompletionItemKind.TypeParameter,
                 insertText: 'texto ${1:nome} = "${2:valor}";',
-                documentation: 'Tipo de dados para strings de texto (linguagem Por Do Sol)',
-                detail: 'Tipo de dados - Por Do Sol'
+                documentation: 'Tipo de dados para strings de texto',
+                detail: 'Tipo de dados - Por Do Sol',
+                data: 25
             },
             {
                 label: 'booleano',
                 kind: CompletionItemKind.TypeParameter,
                 insertText: 'booleano ${1:nome} = ${2|verdadeiro,falso|};',
-                documentation: 'Tipo de dados lógico verdadeiro/falso (linguagem Por Do Sol)',
-                detail: 'Tipo de dados - Por Do Sol'
+                documentation: 'Tipo de dados lógico verdadeiro/falso',
+                detail: 'Tipo de dados - Por Do Sol',
+                data: 26
+            },
+            {
+                label: 'vazio',
+                kind: CompletionItemKind.TypeParameter,
+                insertText: 'vazio',
+                documentation: 'Tipo void para funções que não retornam valor',
+                detail: 'Tipo de dados - Por Do Sol',
+                data: 27
             }
         ];
 
-        // Valores booleanos
-        const booleans = [
+        // Valores e literais
+        const values = [
             {
                 label: 'verdadeiro',
                 kind: CompletionItemKind.Value,
                 insertText: 'verdadeiro',
-                documentation: 'Valor booleano verdadeiro (linguagem Por Do Sol)',
-                detail: 'Valor booleano'
+                documentation: 'Valor booleano verdadeiro',
+                detail: 'Valor booleano',
+                data: 28
             },
             {
                 label: 'falso',
                 kind: CompletionItemKind.Value,
                 insertText: 'falso',
-                documentation: 'Valor booleano falso (linguagem Por Do Sol)',
-                detail: 'Valor booleano'
+                documentation: 'Valor booleano falso',
+                detail: 'Valor booleano',
+                data: 29
             }
         ];
 
-        // Operadores
-        const operators = [
-            {
-                label: '==',
-                kind: CompletionItemKind.Operator,
-                insertText: '== ',
-                documentation: 'Operador de igualdade (linguagem Por Do Sol)',
-                detail: 'Comparação'
-            },
-            {
-                label: '!=',
-                kind: CompletionItemKind.Operator,
-                insertText: '!= ',
-                documentation: 'Operador de diferença (linguagem Por Do Sol)',
-                detail: 'Comparação'
-            },
-            {
-                label: '>=',
-                kind: CompletionItemKind.Operator,
-                insertText: '>= ',
-                documentation: 'Maior ou igual que (linguagem Por Do Sol)',
-                detail: 'Comparação'
-            },
-            {
-                label: '<=',
-                kind: CompletionItemKind.Operator,
-                insertText: '<= ',
-                documentation: 'Menor ou igual que (linguagem Por Do Sol)',
-                detail: 'Comparação'
-            }
-        ];
-
-        // Autocompletar inteligente baseado no contexto
-        if (lineText.trim().length === 0) {
-            // Início de linha - mostrar tudo
-            completions.push(...keywords, ...types);
-        } else if (lineText.includes('inteiro') || lineText.includes('texto') || lineText.includes('booleano')) {
-            // Contexto de declaração
-            if (lineText.includes('=')) {
-                // Após =, mostrar valores e variáveis
-                completions.push(...booleans, ...getVariableNames(text));
-            } else {
-                // Mostrar operador de atribuição
-                completions.push({
-                    label: '=',
-                    kind: CompletionItemKind.Operator,
-                    insertText: '= ',
-                    documentation: 'Operador de atribuição (linguagem Por Do Sol)'
-                });
-            }
-        } else if (lineText.includes('se ') && !lineText.includes('então')) {
-            // Contexto de condição
-            completions.push(...operators, ...getVariableNames(text));
-            completions.push({
-                label: 'então',
-                kind: CompletionItemKind.Keyword,
-                insertText: 'então {\n\t$1\n}',
-                documentation: 'Bloco de execução da condição (linguagem Por Do Sol)'
-            });
-        } else if (lineText.includes('imprima(')) {
-            // Dentro de imprima, mostrar variáveis disponíveis
+        // Interpolação de strings
+        if (lineText.includes('$"') || lineText.includes('${')) {
             completions.push(...getVariableNames(text));
+            return completions;
+        }
+
+        // Contexto de classe
+        if (isInsideClass(text, position)) {
+            completions.push(...accessModifiers, ...types, ...oopKeywords.slice(1)); // Excluir 'classe'
+        }
+
+        // Contexto após 'novo'
+        if (lineText.includes('novo ')) {
+            completions.push(...getClassNames(text));
+        }
+
+        // Contexto após 'este.'
+        if (lineText.includes('este.')) {
+            completions.push(...getClassMembers(text, position));
+        }
+
+        // Contexto geral
+        if (lineText.trim().length === 0) {
+            completions.push(...keywords, ...oopKeywords, ...types);
+        } else if (lineText.includes('=') && !lineText.includes('==')) {
+            completions.push(...values, ...getVariableNames(text));
         } else {
-            // Contexto geral
-            completions.push(...keywords, ...types);
+            completions.push(...keywords, ...oopKeywords, ...types);
         }
 
         return completions;
     }
 );
 
-// Resolver detalhes adicionais do autocompletar
-connection.onCompletionResolve((item: CompletionItem): CompletionItem => {
-    return item;
-});
+// HANDLER PARA RESOLUÇÃO DE COMPLETION ITEMS - CORRIGIDO
+connection.onCompletionResolve(
+    (item: CompletionItem): CompletionItem => {
+        // Verificar se o item tem dados para resolver
+        if (item.data === 1) {
+            item.detail = 'Condicional Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Estrutura condicional**
 
-// Extrair nomes de variáveis do código
+\`\`\`
+se (condicao) 
+{
+    // código
+}
+\`\`\`
+
+Executa código baseado em uma condição lógica.`
+            };
+        } else if (item.data === 2) {
+            item.detail = 'Classe Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Orientação a Objetos**
+
+\`\`\`
+classe MinhaClasse 
+{
+    publico inteiro propriedade;
+    
+    MinhaClasse(parametros) 
+    {
+        // inicialização sem palavra construtor
+    }
+    
+    publico vazio metodo() 
+    {
+        // código do método
+    }
+}
+\`\`\``
+            };
+        } else if (item.data === 3) {
+            item.detail = 'Função Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Declaração de Função**
+
+\`\`\`
+funcao minhaFuncao() => inteiro 
+{
+    retorne 42;
+}
+\`\`\``
+            };
+        } else if (item.data === 11) {
+            item.detail = 'Senão - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Bloco alternativo**
+
+\`\`\`
+se (condicao) 
+{
+    // código verdadeiro
+} 
+senão 
+{
+    // código falso
+}
+\`\`\``
+            };
+        } else if (item.data === 12) {
+            item.detail = 'Loop Enquanto - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Loop enquanto**
+
+\`\`\`
+enquanto (condicao) 
+{
+    // código repetitivo
+}
+\`\`\``
+            };
+        } else if (item.data === 13) {
+            item.detail = 'Loop Para - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Loop for**
+
+\`\`\`
+para (inteiro i = 0; i < 10; i = i + 1) 
+{
+    // código repetitivo
+}
+\`\`\``
+            };
+        } else if (item.data === 17) {
+            item.detail = 'Construtor - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Método Construtor**
+
+\`\`\`
+NomeClasse(parametros) 
+{
+    // inicialização
+    // Sem palavra-chave 'construtor'
+}
+\`\`\`
+
+O construtor é declarado apenas com o nome da classe.`
+            };
+        } else if (item.data === 18) {
+            item.detail = 'Referência Este - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Referência ao objeto atual**
+
+Usado para acessar propriedades e métodos da instância atual.
+
+\`\`\`
+este.propriedade = valor;
+este.metodo();
+\`\`\``
+            };
+        } else if (item.data === 19) {
+            item.detail = 'Instanciação - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Criação de objeto**
+
+\`\`\`
+var objeto = novo MinhaClasse(argumentos);
+\`\`\``
+            };
+        } else if (item.data === 20) {
+            item.detail = 'Namespace - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Organização modular**
+
+\`\`\`
+espaco MeuNamespace 
+{
+    classe MinhaClasse { }
+}
+\`\`\``
+            };
+        }
+
+        return item;
+    }
+);
+
+// Funções auxiliares expandidas
 function getVariableNames(text: string): CompletionItem[] {
-    const variableRegex = /(?:inteiro|texto|booleano)\s+(\w+)/g;
+    const variableRegex = /(?:inteiro|texto|booleano|var)\s+(\w+)/g;
     const variables: CompletionItem[] = [];
     let match;
 
@@ -322,33 +539,78 @@ function getVariableNames(text: string): CompletionItem[] {
             label: match[1],
             kind: CompletionItemKind.Variable,
             insertText: match[1],
-            documentation: `Variável declarada: ${match[1]} (linguagem Por Do Sol)`,
-            detail: 'Variável - Por Do Sol'
+            documentation: `Variável declarada: ${match[1]}`,
+            detail: 'Variável - Por Do Sol',
+            data: 100 + variables.length
         });
     }
 
     return variables;
 }
 
-// VALIDAÇÃO DE SINTAXE EM TEMPO REAL
-documents.onDidChangeContent((change: TextDocumentChangeEvent<TextDocument>) => {
-    validateTextDocument(change.document);
-});
+function getClassNames(text: string): CompletionItem[] {
+    const classRegex = /classe\s+(\w+)/g;
+    const classes: CompletionItem[] = [];
+    let match;
 
+    while ((match = classRegex.exec(text)) !== null) {
+        classes.push({
+            label: match[1],
+            kind: CompletionItemKind.Class,
+            insertText: match[1],
+            documentation: `Classe: ${match[1]}`,
+            detail: 'Classe - Por Do Sol',
+            data: 200 + classes.length
+        });
+    }
+
+    return classes;
+}
+
+function isInsideClass(text: string, position: Position): boolean {
+    const lines = text.split('\n');
+    let insideClass = false;
+    let braceCount = 0;
+
+    for (let i = 0; i <= position.line; i++) {
+        const line = lines[i];
+        if (line.includes('classe ')) {
+            insideClass = true;
+            braceCount = 0;
+        }
+        
+        for (const char of line) {
+            if (char === '{') braceCount++;
+            if (char === '}') braceCount--;
+        }
+
+        if (insideClass && braceCount === 0 && i > 0) {
+            insideClass = false;
+        }
+    }
+
+    return insideClass && braceCount > 0;
+}
+
+function getClassMembers(text: string, position: Position): CompletionItem[] {
+    // Implementar análise de membros da classe
+    return [];
+}
+
+// VALIDAÇÃO EXPANDIDA
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     const settings = await getDocumentSettings(textDocument.uri);
     const text = textDocument.getText();
     const diagnostics: Diagnostic[] = [];
-
     const lines = text.split('\n');
     
     lines.forEach((line: string, index: number) => {
         const trimmed = line.trim();
         
-        // Verificar comandos sem ponto e vírgula
+        // Validações existentes
         if (trimmed && 
             (trimmed.includes('imprima(') || 
-             trimmed.match(/^(inteiro|texto|booleano)\s+\w+/) ||
+             trimmed.match(/^(inteiro|texto|booleano|var)\s+\w+/) ||
              trimmed.includes(' = ')) &&
             !trimmed.endsWith(';') && 
             !trimmed.endsWith('{') &&
@@ -361,65 +623,65 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
                     start: { line: index, character: 0 },
                     end: { line: index, character: line.length }
                 },
-                message: 'Comando deve terminar com ponto e vírgula (;) - Linguagem Por Do Sol',
+                message: 'Comando deve terminar com ponto e vírgula (;)',
                 source: 'Por Do Sol Language Server',
                 code: 'missing-semicolon'
             });
         }
 
-        // Verificar strings não fechadas
-        if (trimmed.includes('"') && (trimmed.split('"').length - 1) % 2 !== 0) {
+        // Validação de interpolação de strings
+        if (trimmed.includes('$"')) {
+            const interpolationRegex = /\$"[^"]*\{[^}]*\}[^"]*"/g;
+            if (!interpolationRegex.test(trimmed) && trimmed.includes('{')) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: {
+                        start: { line: index, character: trimmed.indexOf('$"') },
+                        end: { line: index, character: line.length }
+                    },
+                    message: 'Interpolação de string mal formada - use $"texto {variavel}"',
+                    source: 'Por Do Sol Language Server',
+                    code: 'malformed-interpolation'
+                });
+            }
+        }
+
+        // Validação de classes
+        if (trimmed.includes('classe ') && !trimmed.match(/classe\s+[A-Z]\w*\s*{?/)) {
             diagnostics.push({
-                severity: DiagnosticSeverity.Error,
+                severity: DiagnosticSeverity.Warning,
                 range: {
-                    start: { line: index, character: trimmed.indexOf('"') },
+                    start: { line: index, character: 0 },
                     end: { line: index, character: line.length }
                 },
-                message: 'String não fechada - adicione aspas duplas no final (Por Do Sol)',
+                message: 'Nome de classe deve começar com letra maiúscula',
                 source: 'Por Do Sol Language Server',
-                code: 'unclosed-string'
+                code: 'class-naming'
             });
         }
 
-        // Verificar palavras-chave em inglês (sugerir português)
-        const englishKeywords = ['if', 'while', 'print', 'int', 'string', 'bool', 'then', 'else'];
-        englishKeywords.forEach(keyword => {
-            if (trimmed.includes(keyword)) {
-                const suggestions: { [key: string]: string } = {
-                    'if': 'se',
-                    'while': 'enquanto',
-                    'print': 'imprima',
-                    'int': 'inteiro',
-                    'string': 'texto',
-                    'bool': 'booleano',
-                    'then': 'então',
-                    'else': 'senão'
-                };
-                
-                if (settings.showWarnings) {
-                    diagnostics.push({
-                        severity: DiagnosticSeverity.Warning,
-                        range: {
-                            start: { line: index, character: trimmed.indexOf(keyword) },
-                            end: { line: index, character: trimmed.indexOf(keyword) + keyword.length }
-                        },
-                        message: `Use '${suggestions[keyword]}' em vez de '${keyword}' na linguagem Por Do Sol`,
-                        source: 'Por Do Sol Language Server',
-                        code: 'use-portuguese'
-                    });
-                }
-            }
-        });
+        // Validação para detectar uso incorreto da palavra 'construtor'
+        if (trimmed.includes('construtor ') && !trimmed.startsWith('//')) {
+            diagnostics.push({
+                severity: DiagnosticSeverity.Error,
+                range: {
+                    start: { line: index, character: trimmed.indexOf('construtor') },
+                    end: { line: index, character: trimmed.indexOf('construtor') + 10 }
+                },
+                message: 'Use apenas o nome da classe para o construtor. Ex: MinhaClasse() em vez de construtor MinhaClasse()',
+                source: 'Por Do Sol Language Server',
+                code: 'invalid-constructor-keyword'
+            });
+        }
     });
 
-    // Limitar número de problemas
     connection.sendDiagnostics({ 
         uri: textDocument.uri, 
         diagnostics: diagnostics.slice(0, settings.maxNumberOfProblems) 
     });
 }
 
-// HOVER PARA INFORMAÇÕES DETALHADAS - VERSÃO CORRIGIDA
+// HOVER EXPANDIDO
 connection.onHover((params: HoverParams): Hover | null => {
     const document = documents.get(params.textDocument.uri);
     if (!document) {
@@ -432,7 +694,6 @@ connection.onHover((params: HoverParams): Hover | null => {
         end: { line: position.line + 1, character: 0 }
     });
     
-    // Melhor detecção de palavra
     const wordMatch = getWordAtPosition(line, position.character);
     if (!wordMatch) {
         return null;
@@ -440,18 +701,15 @@ connection.onHover((params: HoverParams): Hover | null => {
     
     const word = wordMatch.word;
     
-    // Informações de hover para palavras-chave
     const hoverInfo: { [key: string]: string } = {
-        'se': '**Palavra-chave condicional** (Por Do Sol)\n\nExecuta código baseado em uma condição.\n\n**Sintaxe:**\n``````',
-        'então': '**Palavra-chave condicional** (Por Do Sol)\n\nUsada após a condição no comando `se`.\n\n**Exemplo:**\n``````',
-        'senão': '**Palavra-chave condicional** (Por Do Sol)\n\nBloco alternativo executado quando a condição é falsa.\n\n**Exemplo:**\n``````',
-        'enquanto': '**Palavra-chave de loop** (Por Do Sol)\n\nRepete código enquanto condição for verdadeira.\n\n**Exemplo:**\n``````',
-        'imprima': '**Função de saída** (Por Do Sol)\n\nImprime valores na tela.\n\n**Uso:**\n- `imprima("texto")` - Imprime string\n- `imprima(variavel)` - Imprime valor de variável\n\n**Exemplo:**\n``````',
-        'inteiro': '**Tipo de dados** (Por Do Sol)\n\nNúmeros inteiros de 64 bits.\n\n**Intervalo:** -9.223.372.036.854.775.808 a 9.223.372.036.854.775.807\n\n**Exemplo:**\n``````',
-        'texto': '**Tipo de dados** (Por Do Sol)\n\nStrings de texto Unicode.\n\n**Exemplo:**\n``````',
-        'booleano': '**Tipo de dados** (Por Do Sol)\n\nValores lógicos: verdadeiro ou falso.\n\n**Exemplo:**\n``````',
-        'verdadeiro': '**Valor booleano** (Por Do Sol)\n\nRepresenta o valor lógico verdadeiro.\n\n**Uso em condições:**\n``````',
-        'falso': '**Valor booleano** (Por Do Sol)\n\nRepresenta o valor lógico falso.\n\n**Uso em condições:**\n``````'
+        'se': '**Condicional** (Por Do Sol)\n\nEstrutura de controle para decisões lógicas.\n\n``````',
+        'classe': '**Orientação a Objetos** (Por Do Sol)\n\nDefinição de classe com propriedades e métodos.\n\n``````',
+        'construtor': '**Método Construtor** (Por Do Sol)\n\nUse apenas o nome da classe: NomeClasse() {...}\n\n``````',
+        'este': '**Referência ao Objeto** (Por Do Sol)\n\nUsado para acessar membros da instância atual.\n\n``````',
+        'novo': '**Instanciação** (Por Do Sol)\n\nCriação de nova instância de classe.\n\n``````',
+        'espaco': '**Namespace** (Por Do Sol)\n\nOrganização modular do código.\n\n``````',
+        'var': '**Inferência de Tipo** (Por Do Sol)\n\nDeclaração com tipo inferido automaticamente.\n\n``````',
+        'funcao': '**Declaração de Função** (Por Do Sol)\n\nDefinição de função com tipo de retorno.\n\n``````'
     };
 
     if (hoverInfo[word]) {
@@ -472,9 +730,7 @@ connection.onHover((params: HoverParams): Hover | null => {
     return null;
 });
 
-// Função para melhor detecção de palavra
 function getWordAtPosition(line: string, character: number): { word: string; start: number; end: number } | null {
-    // Regex para identificar palavras (incluindo acentos portugueses)
     const wordRegex = /[a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*/g;
     let match;
     
@@ -482,7 +738,6 @@ function getWordAtPosition(line: string, character: number): { word: string; sta
         const start = match.index;
         const end = match.index + match[0].length;
         
-        // Verificar se a posição do cursor está dentro desta palavra
         if (character >= start && character <= end) {
             return {
                 word: match[0],
@@ -495,6 +750,9 @@ function getWordAtPosition(line: string, character: number): { word: string; sta
     return null;
 }
 
-// Escutar conexão
+documents.onDidChangeContent((change: TextDocumentChangeEvent<TextDocument>) => {
+    validateTextDocument(change.document);
+});
+
 documents.listen(connection);
 connection.listen();

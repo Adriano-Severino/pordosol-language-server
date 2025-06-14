@@ -1,49 +1,86 @@
 {
-  "name": "pordosol-language-server",
-  "displayName": "Por Do Sol Language Server",
-  "description": "Language Server inteligente para Por Do Sol",
-  "version": "1.0.0",
-  "publisher": "adriano-severino",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Adriano-Severino/pordosol-language-server.git"
-  },
-  "engines": {
-    "vscode": "^1.74.0"
-  },
-  "categories": [
-    "Programming Languages"
-  ],
-  "activationEvents": [
-    "onLanguage:pordosol"
-  ],
-  "main": "./client/out/extension",
-  "contributes": {
-    "languages": [
-      {
-        "id": "pordosol",
-        "aliases": [
-          "Por Do Sol",
-          "pordosol"
+    "name": "pordosol-language-server",
+    "displayName": "🌅 Por Do Sol Language Server",
+    "description": "Language Server inteligente para Por Do Sol com OOP, Ownership e Interpolação",
+    "version": "2.0.0",
+    "publisher": "adriano-severino",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/Adriano-Severino/pordosol-language-server.git"
+    },
+    "engines": {
+        "vscode": "^1.74.0"
+    },
+    "categories": [
+        "Programming Languages",
+        "Linters",
+        "Other"
+    ],
+    "keywords": [
+        "português",
+        "brazilian",
+        "oop",
+        "ownership",
+        "interpolation"
+    ],
+    "activationEvents": [
+        "onLanguage:pordosol"
+    ],
+    "main": "./client/out/extension",
+    "contributes": {
+        "languages": [
+            {
+                "id": "pordosol",
+                "aliases": [
+                    "Por Do Sol",
+                    "pordosol",
+                    "PorDoSol"
+                ],
+                "extensions": [
+                    ".pr",
+                    ".pds"
+                ],
+                "configuration": "./language-configuration.json"
+            }
         ],
-        "extensions": [
-          ".pr"
-        ],
-        "configuration": "./language-configuration.json"
-      }
-    ]
-  }, 
-  "scripts": {
-    "vscode:prepublish": "npm run compile",
-    "compile": "npm run clean && npm run build",
-    "build": "tsc -b --force",
-    "watch": "tsc -b -w",
-    "clean": "npx rimraf client/out server/out out",
-    "postinstall": "cd client && npm install && cd ../server && npm install && cd .."
-  },
-  "devDependencies": {
-    "@types/node": "^22.15.30",
-    "rimraf": "^6.0.1",
-    "typescript": "^5.8.3"
-  }
+        "configuration": {
+            "type": "object",
+            "title": "Por Do Sol Language Server",
+            "properties": {
+                "pordosolLanguageServer.maxNumberOfProblems": {
+                    "scope": "resource",
+                    "type": "number",
+                    "default": 100,
+                    "description": "Máximo número de problemas reportados"
+                },
+                "pordosolLanguageServer.enableStrictMode": {
+                    "scope": "resource",
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Habilitar modo estrito de validação"
+                },
+                "pordosolLanguageServer.enableOwnershipAnalysis": {
+                    "scope": "resource",
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Habilitar análise de ownership"
+                }
+            }
+        }
+    },
+    "scripts": {
+        "vscode:prepublish": "npm run compile",
+        "compile": "npm run clean && npm run build",
+        "build": "tsc -b --force",
+        "watch": "tsc -b -w",
+        "clean": "npx rimraf client/out server/out out",
+        "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",
+        "package": "vsce package"
+    },
+    "devDependencies": {
+        "@types/node": "^22.15.30",
+        "rimraf": "^6.0.1",
+        "typescript": "^5.8.3",
+        "@vscode/vsce": "^2.15.0"
+    }
 }
