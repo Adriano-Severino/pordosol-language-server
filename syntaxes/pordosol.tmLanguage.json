@@ -3,16 +3,36 @@
     "name": "Por Do Sol",
     "scopeName": "source.pordosol",
     "patterns": [
-        { "include": "#comments" },
-        { "include": "#keywords" },
-        { "include": "#types" },
-        { "include": "#operators" },
-        { "include": "#strings" },
-        { "include": "#interpolated-strings" },
-        { "include": "#numbers" },
-        { "include": "#classes" },
-        { "include": "#functions" },
-        { "include": "#namespaces" }
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#types"
+        },
+        {
+            "include": "#operators"
+        },
+        {
+            "include": "#strings"
+        },
+        {
+            "include": "#interpolated-strings"
+        },
+        {
+            "include": "#numbers"
+        },
+        {
+            "include": "#classes"
+        },
+        {
+            "include": "#functions"
+        },
+        {
+            "include": "#namespaces"
+        }
     ],
     "repository": {
         "comments": {
@@ -32,7 +52,7 @@
             "patterns": [
                 {
                     "name": "keyword.control.pordosol",
-                    "match": "\\b(se|então|senão|enquanto|para|funcao|retorne|imprima|novo|este)\\b"
+                    "match": "\\b(se|então|senão|enquanto|para|função|retorne|imprima|novo|este)\\b"
                 },
                 {
                     "name": "keyword.other.pordosol",
@@ -105,7 +125,9 @@
                     "begin": "\\{",
                     "end": "\\}",
                     "patterns": [
-                        { "include": "$self" }
+                        {
+                            "include": "$self"
+                        }
                     ]
                 },
                 {

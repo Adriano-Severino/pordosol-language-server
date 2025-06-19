@@ -180,16 +180,16 @@ connection.onCompletion(
                 label: 'imprima',
                 kind: CompletionItemKind.Function,
                 insertText: 'imprima(${1:valor});',
-                documentation: 'Função para imprimir valores na tela (linguagem Por Do Sol)',
-                detail: 'Função de saída - Por Do Sol',
+                documentation: 'função para imprimir valores na tela (linguagem Por Do Sol)',
+                detail: 'função de saída - Por Do Sol',
                 data: 14
             },
             {
-                label: 'funcao',
+                label: 'função',
                 kind: CompletionItemKind.Keyword,
-                insertText: 'funcao ${1:nome}(${2:parametros}) => ${3:tipo} {\n\t${4:// código}\n\tretorne ${5:valor};\n}',
+                insertText: 'função ${1:nome}(${2:parametros}) => ${3:tipo} {\n\t${4:// código}\n\tretorne ${5:valor};\n}',
                 documentation: 'Declaração de função com tipo de retorno',
-                detail: 'Função - Por Do Sol',
+                detail: 'função - Por Do Sol',
                 data: 3
             },
             {
@@ -415,13 +415,13 @@ classe MinhaClasse
 \`\`\``
             };
         } else if (item.data === 3) {
-            item.detail = 'Função Por Do Sol';
+            item.detail = 'função Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Declaração de Função**
+                value: `**Declaração de função**
 
 \`\`\`
-funcao minhaFuncao() => inteiro 
+função minhaFunção() => inteiro 
 {
     retorne 42;
 }
@@ -578,7 +578,7 @@ function isInsideClass(text: string, position: Position): boolean {
             insideClass = true;
             braceCount = 0;
         }
-        
+
         for (const char of line) {
             if (char === '{') braceCount++;
             if (char === '}') braceCount--;
@@ -603,34 +603,80 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     const text = textDocument.getText();
     const diagnostics: Diagnostic[] = [];
     const lines = text.split('\n');
-    
-    // Processar o texto como declarações completas, não linha por linha
-    const fullText = text.replace(/\s+/g, ' ').trim();
-    
+
     lines.forEach((line: string, index: number) => {
         const trimmed = line.trim();
-        
+
         // Pular linhas vazias e comentários
         if (!trimmed || trimmed.startsWith('//')) {
             return;
         }
-        
+
+        // CONTEXTO: Verificar se estamos dentro de uma assinatura de método/construtor
+        const isInsideMethodSignature = (lineIndex: number): boolean => {
+            // Procurar para trás por uma linha que indica início de método/construtor
+            for (let i = lineIndex; i >= 0; i--) {
+                const prevLine = lines[i].trim();
+
+                // Se encontrou uma abertura de chaves, não estamos em assinatura
+                if (prevLine.endsWith('{')) {
+                    return false;
+                }
+
+                // Se encontrou início de construtor ou função
+                if (prevLine.match(/^(publico|privado|protegido)?\s*(função\s+\w+|[A-Z]\w*)\s*\(/)) {
+                    return true;
+                }
+
+                // Se a linha atual ou anterior tem parênteses abertos sem fechar
+                if (prevLine.includes('(') && !prevLine.includes(')')) {
+                    return true;
+                }
+            }
+            return false;
+        };
+
+        // CONTEXTO: Verificar se estamos dentro de propriedades { buscar; definir; }
+        const isInsidePropertyBlock = (lineIndex: number): boolean => {
+            const currentLine = lines[lineIndex].trim();
+            return currentLine.includes('{ buscar; definir; }') ||
+                currentLine.includes('{') && currentLine.includes('buscar') ||
+                currentLine.includes('{') && currentLine.includes('definir');
+        };
+
         // Verificar se é uma linha que claramente deve terminar com ;
         const shouldEndWithSemicolon = (
             // Comando imprima completo em uma linha
             (trimmed.includes('imprima(') && trimmed.includes(')') && !trimmed.endsWith(';')) ||
-            
-            // Declaração de variável simples (uma linha só)
-            (trimmed.match(/^(inteiro|texto|booleano|var)\s+\w+\s*=\s*[^,\n]+$/) && !trimmed.endsWith(';')) ||
-            
-            // Atribuição simples (uma linha só)
-            (trimmed.match(/^\w+\s*=\s*[^,\n]+$/) && !trimmed.endsWith(';')) ||
-            
+
+            // Declaração de variável simples (uma linha só) - MAS NÃO dentro de assinatura
+            (trimmed.match(/^(inteiro|texto|booleano|var)\s+\w+\s*=\s*[^,\n(]+$/) &&
+                !trimmed.endsWith(';') &&
+                !isInsideMethodSignature(index)) ||
+
+            // Atribuição simples (uma linha só) - MAS NÃO dentro de assinatura
+            (trimmed.match(/^\w+\s*=\s*[^,\n(]+$/) &&
+                !trimmed.endsWith(';') &&
+                !isInsideMethodSignature(index)) ||
+
             // Chamada de função simples (uma linha só)
             (trimmed.match(/^\w+\.\w+\([^)]*\)$/) && !trimmed.endsWith(';'))
         );
-        
-        if (shouldEndWithSemicolon) {
+
+        // NÃO VALIDAR se:
+        const skipValidation = (
+            isInsideMethodSignature(index) ||           // Dentro de assinatura de método
+            isInsidePropertyBlock(index) ||             // Dentro de bloco de propriedades
+            trimmed.endsWith('{') ||                    // Linha termina com abertura de chave
+            trimmed.endsWith('}') ||                    // Linha termina com fechamento de chave
+            trimmed.endsWith(',') ||                    // Linha termina com vírgula (parâmetro continua)
+            trimmed.endsWith(')') ||                    // Linha termina com parênteses (fim de parâmetros)
+            trimmed.includes('publico classe') ||       // Declaração de classe
+            trimmed.includes('espaco ') ||              // Declaração de namespace
+            trimmed.match(/^(publico|privado|protegido)\s+(inteiro|texto|booleano)\s+\w+\s*{/) // Propriedade com getter/setter
+        );
+
+        if (shouldEndWithSemicolon && !skipValidation) {
             diagnostics.push({
                 severity: DiagnosticSeverity.Error,
                 range: {
@@ -641,40 +687,6 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
                 source: 'Por Do Sol Language Server',
                 code: 'missing-semicolon'
             });
-        }
-        
-        // Validação para declarações multi-linha (só verificar a última linha)
-        if (trimmed.endsWith(');') && !trimmed.endsWith(';;')) {
-            // OK - declaração multi-linha terminada corretamente
-        } else if (trimmed.match(/^(inteiro|texto|booleano)\s+\w+\s*=\s*novo\s+\w+\s*\([^)]*$/) && 
-                   index < lines.length - 1) {
-            // Verificar se a declaração multi-linha termina corretamente
-            let nextLineIndex = index + 1;
-            let found = false;
-            
-            while (nextLineIndex < lines.length && !found) {
-                const nextLine = lines[nextLineIndex].trim();
-                if (nextLine.includes(');')) {
-                    found = true;
-                } else if (nextLine && !nextLine.includes(',') && !nextLine.includes('"')) {
-                    // Linha que não faz parte da declaração
-                    break;
-                }
-                nextLineIndex++;
-            }
-            
-            if (!found) {
-                diagnostics.push({
-                    severity: DiagnosticSeverity.Error,
-                    range: {
-                        start: { line: index, character: 0 },
-                        end: { line: index, character: line.length }
-                    },
-                    message: 'Declaração multi-linha deve terminar com ponto e vírgula (;)',
-                    source: 'Por Do Sol Language Server',
-                    code: 'missing-semicolon-multiline'
-                });
-            }
         }
 
         // Validação de interpolação de strings
@@ -723,9 +735,9 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         }
     });
 
-    connection.sendDiagnostics({ 
-        uri: textDocument.uri, 
-        diagnostics: diagnostics.slice(0, settings.maxNumberOfProblems) 
+    connection.sendDiagnostics({
+        uri: textDocument.uri,
+        diagnostics: diagnostics.slice(0, settings.maxNumberOfProblems)
     });
 }
 
@@ -741,14 +753,14 @@ connection.onHover((params: HoverParams): Hover | null => {
         start: { line: position.line, character: 0 },
         end: { line: position.line + 1, character: 0 }
     });
-    
+
     const wordMatch = getWordAtPosition(line, position.character);
     if (!wordMatch) {
         return null;
     }
-    
+
     const word = wordMatch.word;
-    
+
     const hoverInfo: { [key: string]: string } = {
         'se': '**Condicional** (Por Do Sol)\n\nEstrutura de controle para decisões lógicas.\n\n``````',
         'classe': '**Orientação a Objetos** (Por Do Sol)\n\nDefinição de classe com propriedades e métodos.\n\n``````',
@@ -757,7 +769,7 @@ connection.onHover((params: HoverParams): Hover | null => {
         'novo': '**Instanciação** (Por Do Sol)\n\nCriação de nova instância de classe.\n\n``````',
         'espaco': '**Namespace** (Por Do Sol)\n\nOrganização modular do código.\n\n``````',
         'var': '**Inferência de Tipo** (Por Do Sol)\n\nDeclaração com tipo inferido automaticamente.\n\n``````',
-        'funcao': '**Declaração de Função** (Por Do Sol)\n\nDefinição de função com tipo de retorno.\n\n``````'
+        'Função': '**Declaração de Função** (Por Do Sol)\n\nDefinição de função com tipo de retorno.\n\n``````'
     };
 
     if (hoverInfo[word]) {
@@ -765,7 +777,7 @@ connection.onHover((params: HoverParams): Hover | null => {
             start: { line: position.line, character: wordMatch.start },
             end: { line: position.line, character: wordMatch.end }
         };
-        
+
         return {
             contents: {
                 kind: MarkupKind.Markdown,
@@ -781,11 +793,11 @@ connection.onHover((params: HoverParams): Hover | null => {
 function getWordAtPosition(line: string, character: number): { word: string; start: number; end: number } | null {
     const wordRegex = /[a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*/g;
     let match;
-    
+
     while ((match = wordRegex.exec(line)) !== null) {
         const start = match.index;
         const end = match.index + match[0].length;
-        
+
         if (character >= start && character <= end) {
             return {
                 word: match[0],
@@ -794,7 +806,7 @@ function getWordAtPosition(line: string, character: number): { word: string; sta
             };
         }
     }
-    
+
     return null;
 }
 

@@ -99,7 +99,7 @@ espaco Meu_Programa.Domain
         }
     }
 
-    publico funcao teste_pessoa() 
+    publico função teste_pessoa() 
     {
         // ✅ Passa apenas 3 parâmetros, usa padrões para idade (24) e sobrenome ("Silva")
         Pessoa2 p1 = novo Pessoa2("Joana", "Rua de exemplo", "123456789");
@@ -137,7 +137,7 @@ fim
 ## 🧩 Snippets Avançados
 
 - `classe` — Classe completa com construtor e métodos
-- `funcao` — Função com tipo de retorno
+- `função` — Função com tipo de retorno
 - `espaco` — Namespace
 - `interpolacao` — String interpolada
 - `novo` — Criação de objeto
