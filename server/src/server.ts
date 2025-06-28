@@ -636,11 +636,11 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
             return false;
         };
 
-        // CONTEXTO: Verificar se estamos dentro de propriedades { buscar; definir; }
+        // CONTEXTO: Verificar se estamos dentro de propriedades { obter; definir; }
         const isInsidePropertyBlock = (lineIndex: number): boolean => {
             const currentLine = lines[lineIndex].trim();
-            return currentLine.includes('{ buscar; definir; }') ||
-                currentLine.includes('{') && currentLine.includes('buscar') ||
+            return currentLine.includes('{ obter; definir; }') ||
+                currentLine.includes('{') && currentLine.includes('obter') ||
                 currentLine.includes('{') && currentLine.includes('definir');
         };
 
