@@ -60,7 +60,7 @@
                 },
                 {
                     "name": "storage.modifier.pordosol",
-                    "match": "\\b(publico|privado|protegido)\\b"
+                    "match": "\\b(publico|privado|protegido|estática)\\b"
                 },
                 {
                     "name": "constant.language.boolean.pordosol",
@@ -72,7 +72,7 @@
             "patterns": [
                 {
                     "name": "storage.type.pordosol",
-                    "match": "\\b(inteiro|texto|booleano|vazio)\\b"
+                    "match": "\\b(inteiro|texto|booleano|vazio|decimal|duplo|flutuante)\\b"
                 }
             ]
         },

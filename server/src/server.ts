@@ -221,6 +221,14 @@ connection.onCompletion(
                 data: 2
             },
             {
+                label: 'publico estática classe',
+                kind: CompletionItemKind.Class,
+                insertText: 'publico estática classe ${1:Nome} {\n\t${2:publico} ${3:estática} ${4:texto} ${5:propriedade} { obter; definir; } = "${6:valor}";\n\n\t${2:publico} ${3:estática} ${7:vazio} ${8:metodo}() {\n\t\t${9:// código estático}\n\t}\n}',
+                documentation: 'Declaração de classe estática com membros estáticos',
+                detail: 'Classe Estática - Por Do Sol',
+                data: 31
+            },
+            {
                 label: 'construtor',
                 kind: CompletionItemKind.Constructor,
                 insertText: '${1:NomeClasse}(${2:parametros}) {\n\t${3:// inicialização}\n}',
@@ -279,6 +287,14 @@ connection.onCompletion(
                 documentation: 'Modificador de acesso protegido',
                 detail: 'Acesso - Por Do Sol',
                 data: 23
+            },
+            {
+                label: 'estática',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'estática ',
+                documentation: 'Modificador para membros estáticos da classe',
+                detail: 'Modificador estático - Por Do Sol',
+                data: 30
             }
         ];
 
@@ -718,6 +734,36 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
                 source: 'Por Do Sol Language Server',
                 code: 'class-naming'
             });
+        }
+
+        // Validação de classes estáticas - membros devem ser estáticos
+        if (trimmed.includes('estática classe')) {
+            // Procurar próximas linhas para validar membros da classe estática
+            for (let i = index + 1; i < lines.length; i++) {
+                const memberLine = lines[i].trim();
+                
+                // Se chegou ao fim da classe, parar
+                if (memberLine === '}' && !memberLine.includes('{ obter; definir; }')) {
+                    break;
+                }
+                
+                // Se é uma propriedade ou método público/privado/protegido sem 'estática'
+                if (memberLine.match(/^(publico|privado|protegido)\s+(?!estática)\s*(texto|inteiro|booleano|vazio)\s+\w+/) &&
+                    !memberLine.includes('{ obter; definir; }') &&
+                    !memberLine.includes('//')) {
+                    
+                    diagnostics.push({
+                        severity: DiagnosticSeverity.Error,
+                        range: {
+                            start: { line: i, character: 0 },
+                            end: { line: i, character: memberLine.length }
+                        },
+                        message: 'Membros de classe estática devem usar o modificador "estática"',
+                        source: 'Por Do Sol Language Server',
+                        code: 'static-member-required'
+                    });
+                }
+            }
         }
 
         // Validação para detectar uso incorreto da palavra 'construtor'
