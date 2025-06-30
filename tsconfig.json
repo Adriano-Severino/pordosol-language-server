@@ -2,16 +2,27 @@
   "compilerOptions": {
     "target": "ES2020",
     "module": "commonjs",
-    "lib": ["ES2020"],
+    "lib": [
+      "ES2020"
+    ],
     "strict": false,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./out"
   },
   "references": [
-    { "path": "./client" },
-    { "path": "./server" }
+    {
+      "path": "./client"
+    },
+    {
+      "path": "./server"
+    }
   ],
   "files": [],
-  "exclude": ["**/out/**", "**/node_modules/**", "**/*.d.ts"]
+  "exclude": [
+    "**/out/**",
+    "**/node_modules/**",
+    "**/*.d.ts"
+  ]
 }

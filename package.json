@@ -77,8 +77,7 @@
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",
-        "compile": "npm run clean && npm run build",
-        "build": "tsc -b --force",
+        "compile": "tsc -b",
         "watch": "tsc -b -w",
         "clean": "npx rimraf client/out server/out out",
         "postinstall": "cd client && npm install && cd ../server && npm install && cd ..",

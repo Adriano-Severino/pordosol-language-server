@@ -1,6 +1,9 @@
 {
   "name": "pordosol-language-server",
   "version": "1.0.0",
+  "scripts": {
+    "compile": "tsc"
+  },
   "dependencies": {
     "vscode-languageserver": "^8.1.0",
     "vscode-languageserver-textdocument": "^1.0.8"
