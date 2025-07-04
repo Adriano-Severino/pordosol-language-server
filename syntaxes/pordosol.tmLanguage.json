@@ -72,7 +72,7 @@
             "patterns": [
                 {
                     "name": "storage.type.pordosol",
-                    "match": "\\b(inteiro|texto|booleano|vazio|decimal)\\b"
+                    "match": "\\b(inteiro|texto|booleano|vazio)\\b"
                 }
             ]
         },
@@ -111,7 +111,6 @@
             "patterns": [
                 {
                     "name": "constant.character.escape.pordosol",
-                    "name": "constant.character.escape.pordosol",
                     "match": "\\\\."
                 }
             ]
@@ -132,7 +131,6 @@
                     ]
                 },
                 {
-                    "name": "constant.character.escape.pordosol",
                     "name": "constant.character.escape.pordosol",
                     "match": "\\\\."
                 }
@@ -165,7 +163,6 @@
         "namespaces": {
             "patterns": [
                 {
-                    "name": "entity.name.type.namespace.pordosol",
                     "name": "entity.name.type.namespace.pordosol",
                     "match": "(?<=espaco\\s+)\\b[A-Z][a-zA-Z0-9_]*\\b"
                 }
