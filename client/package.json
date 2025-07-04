@@ -1,9 +1,6 @@
 {
   "name": "pordosol-language-client",
   "version": "1.0.0",
-  "scripts": {
-    "compile": "tsc"
-  },
   "dependencies": {
     "vscode-languageclient": "^8.1.0"
   },

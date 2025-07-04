@@ -60,7 +60,7 @@
                 },
                 {
                     "name": "storage.modifier.pordosol",
-                    "match": "\b(publico|privado|protegido|estática|sobrescreve|redefinível)\b"
+                    "match": "\\b(publico|privado|protegido)\\b"
                 },
                 {
                     "name": "constant.language.boolean.pordosol",
@@ -72,7 +72,7 @@
             "patterns": [
                 {
                     "name": "storage.type.pordosol",
-                    "match": "\\b(inteiro|texto|booleano|vazio|decimal|duplo|flutuante)\\b"
+                    "match": "\\b(inteiro|texto|booleano|vazio)\\b"
                 }
             ]
         },
@@ -110,7 +110,7 @@
             "end": "\"",
             "patterns": [
                 {
-                    "name": "constant.character.escape",
+                    "name": "constant.character.escape.pordosol",
                     "match": "\\\\."
                 }
             ]
@@ -131,7 +131,7 @@
                     ]
                 },
                 {
-                    "name": "constant.character.escape",
+                    "name": "constant.character.escape.pordosol",
                     "match": "\\\\."
                 }
             ]
@@ -163,7 +163,7 @@
         "namespaces": {
             "patterns": [
                 {
-                    "name": "entity.name.type.namespace",
+                    "name": "entity.name.type.namespace.pordosol",
                     "match": "(?<=espaco\\s+)\\b[A-Z][a-zA-Z0-9_]*\\b"
                 }
             ]

@@ -16,13 +16,7 @@ import {
     Hover,
     MarkupKind,
     Position,
-    Range,
-    Location,
-    SignatureHelpParams,
-    SignatureHelp,
-    DocumentFormattingParams,
-    TextEdit,
-    ReferenceParams
+    Range
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -57,12 +51,9 @@ connection.onInitialize((params: InitializeParams) => {
                 triggerCharacters: ['.', ' ', '(', '=', 's', 'e', 'i', 't', 'b', 'c', 'f', 'n', '$', '{']
             },
             hoverProvider: true,
-            documentFormattingProvider: true,
             signatureHelpProvider: {
                 triggerCharacters: ['(', ',']
-            },
-            definitionProvider: true,
-            referencesProvider: true
+            }
         }
     };
 
@@ -104,21 +95,6 @@ let globalSettings: PorDoSolSettings = defaultSettings;
 
 const documentSettings: Map<string, Promise<PorDoSolSettings>> = new Map();
 
-interface SymbolInfo {
-    name: string;
-    kind: CompletionItemKind;
-    definition: Location;
-    references: Location[];
-    documentation?: string;
-    dataType?: string;
-    scope?: string;
-    signature?: string;
-    returnType?: string;
-    members?: string[];
-}
-
-const documentSymbols: Map<string, Map<string, SymbolInfo>> = new Map();
-
 connection.onDidChangeConfiguration(change => {
     if (hasConfigurationCapability) {
         documentSettings.clear();
@@ -147,9 +123,9 @@ function getDocumentSettings(resource: string): Promise<PorDoSolSettings> {
 
 documents.onDidClose(e => {
     documentSettings.delete(e.document.uri);
-    documentSymbols.delete(e.document.uri);
 });
 
+// AUTOCOMPLETAR AVANÇADO COM ORIENTAÇÃO A OBJETOS
 connection.onCompletion(
     (textDocumentPosition: TextDocumentPositionParams): CompletionItem[] => {
         const document = documents.get(textDocumentPosition.textDocument.uri);
@@ -166,6 +142,7 @@ connection.onCompletion(
 
         const completions: CompletionItem[] = [];
 
+        // Palavras-chave principais expandidas
         const keywords = [
             {
                 label: 'se',
@@ -233,6 +210,7 @@ connection.onCompletion(
             }
         ];
 
+        // Palavras-chave OOP CORRIGIDAS SEM PALAVRA CONSTRUTOR
         const oopKeywords = [
             {
                 label: 'classe',
@@ -241,14 +219,6 @@ connection.onCompletion(
                 documentation: 'Declaração de classe com propriedades e métodos (sem palavra construtor)',
                 detail: 'Classe - Por Do Sol',
                 data: 2
-            },
-            {
-                label: 'publico estática classe',
-                insertText: 'publico estática classe ${1:Nome} {\n\t${2:publico} ${3:estática} ${4:texto} ${5:propriedade} { obter; definir; } = "${6:valor}";\n\n\t${2:publico} ${3:estática} ${7:vazio} ${8:metodo}() {\n\t\t${9:// código estático}\n\t}\n}',
-                kind: CompletionItemKind.Class,
-                documentation: 'Declaração de classe estática com membros estáticos',
-                detail: 'Classe Estática - Por Do Sol',
-                data: 31
             },
             {
                 label: 'construtor',
@@ -284,6 +254,7 @@ connection.onCompletion(
             }
         ];
 
+        // Modificadores de acesso
         const accessModifiers = [
             {
                 label: 'publico',
@@ -308,33 +279,10 @@ connection.onCompletion(
                 documentation: 'Modificador de acesso protegido',
                 detail: 'Acesso - Por Do Sol',
                 data: 23
-            },
-            {
-                label: 'estática',
-                kind: CompletionItemKind.Keyword,
-                insertText: 'estática ',
-                documentation: 'Modificador para membros estáticos da classe',
-                detail: 'Modificador estático - Por Do Sol',
-                data: 30
-            },
-            {
-                label: 'sobrescreve',
-                kind: CompletionItemKind.Keyword,
-                insertText: 'sobrescreve ',
-                documentation: 'Modificador para sobrescrever um membro redefinível (override)',
-                detail: 'Modificador de Sobrescrita - Por Do Sol',
-                data: 31
-            },
-            {
-                label: 'redefinível',
-                kind: CompletionItemKind.Keyword,
-                insertText: 'redefinível ',
-                documentation: 'Modificador para permitir que um membro seja sobrescrito em classes derivadas (virtual)',
-                detail: 'Modificador Redefinível - Por Do Sol',
-                data: 32
             }
         ];
 
+        // Tipos de dados expandidos
         const types = [
             {
                 label: 'inteiro',
@@ -370,6 +318,7 @@ connection.onCompletion(
             }
         ];
 
+        // Valores e literais
         const values = [
             {
                 label: 'verdadeiro',
@@ -389,70 +338,32 @@ connection.onCompletion(
             }
         ];
 
-        const symbolsInDocument = documentSymbols.get(document.uri);
-        if (symbolsInDocument) {
-            symbolsInDocument.forEach(symbol => {
-                completions.push({
-                    label: symbol.name,
-                    kind: symbol.kind,
-                    documentation: symbol.documentation,
-                    detail: symbol.dataType ? `${symbol.kind}: ${symbol.dataType}` : `${symbol.kind}`
-                });
-            });
-        }
-
+        // Interpolação de strings
         if (lineText.includes('$"') || lineText.includes('${')) {
-            if (symbolsInDocument) {
-                symbolsInDocument.forEach(symbol => {
-                    if (symbol.kind === CompletionItemKind.Variable) {
-                        completions.push({
-                            label: symbol.name,
-                            kind: symbol.kind,
-                            insertText: symbol.name
-                        });
-                    }
-                });
-            }
+            completions.push(...getVariableNames(text));
             return completions;
         }
 
+        // Contexto de classe
         if (isInsideClass(text, position)) {
-            completions.push(...accessModifiers, ...types, ...oopKeywords.slice(1));
+            completions.push(...accessModifiers, ...types, ...oopKeywords.slice(1)); // Excluir 'classe'
         }
 
+        // Contexto após 'novo'
         if (lineText.includes('novo ')) {
-            if (symbolsInDocument) {
-                symbolsInDocument.forEach(symbol => {
-                    if (symbol.kind === CompletionItemKind.Class) {
-                        completions.push({
-                            label: symbol.name,
-                            kind: symbol.kind,
-                            insertText: symbol.name
-                        });
-                    }
-                });
-            }
+            completions.push(...getClassNames(text));
         }
 
+        // Contexto após 'este.'
         if (lineText.includes('este.')) {
-            const classMembers = getClassMembers(text, position);
-            if (classMembers) {
-                classMembers.forEach(member => {
-                    completions.push({
-                        label: member.label,
-                        kind: member.kind,
-                        insertText: member.label,
-                        documentation: member.documentation,
-                        detail: member.detail
-                    });
-                });
-            }
+            completions.push(...getClassMembers(text, position));
         }
 
+        // Contexto geral
         if (lineText.trim().length === 0) {
             completions.push(...keywords, ...oopKeywords, ...types);
         } else if (lineText.includes('=') && !lineText.includes('==')) {
-            completions.push(...values);
+            completions.push(...values, ...getVariableNames(text));
         } else {
             completions.push(...keywords, ...oopKeywords, ...types);
         }
@@ -461,67 +372,155 @@ connection.onCompletion(
     }
 );
 
+// HANDLER PARA RESOLUÇÃO DE COMPLETION ITEMS - CORRIGIDO
 connection.onCompletionResolve(
     (item: CompletionItem): CompletionItem => {
+        // Verificar se o item tem dados para resolver
         if (item.data === 1) {
             item.detail = 'Condicional Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Estrutura condicional**\n\n\`\`\`\n se (condicao) \n{\n    // código\n}\n\`\`\`\n\nExecuta código baseado em uma condição lógica.`
+                value: `**Estrutura condicional**
+
+\`\`\`
+se (condicao) 
+{
+    // código
+}
+\`\`\`
+
+Executa código baseado em uma condição lógica.`
             };
         } else if (item.data === 2) {
             item.detail = 'Classe Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Orientação a Objetos**\n\n\`\`\`\n classe MinhaClasse \n{\n    publico inteiro propriedade;\n    \n    MinhaClasse(parametros) \n    {\n        // inicialização sem palavra construtor\n    }\n    \n    publico vazio metodo() \n    {\n        // código do método\n    }\n}\n\`\`\``
+                value: `**Orientação a Objetos**
+
+\`\`\`
+classe MinhaClasse 
+{
+    publico inteiro propriedade;
+    
+    MinhaClasse(parametros) 
+    {
+        // inicialização sem palavra construtor
+    }
+    
+    publico vazio metodo() 
+    {
+        // código do método
+    }
+}
+\`\`\``
             };
         } else if (item.data === 3) {
             item.detail = 'função Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Declaração de função**\n\n\`\`\`\n função minhaFunção() => inteiro \n{\n    retorne 42;\n}\n\`\`\`\n\nExecuta código baseado em uma condição lógica.`
+                value: `**Declaração de função**
+
+\`\`\`
+função minhaFunção() => inteiro 
+{
+    retorne 42;
+}
+\`\`\``
             };
         } else if (item.data === 11) {
             item.detail = 'Senão - Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Bloco alternativo**\n\n\`\`\`\n se (condicao) \n{\n    // código verdadeiro\n} \nsenão \n{\n    // código falso\n}\n\`\`\`\n\nExecuta código baseado em uma condição lógica.`
+                value: `**Bloco alternativo**
+
+\`\`\`
+se (condicao) 
+{
+    // código verdadeiro
+} 
+senão 
+{
+    // código falso
+}
+\`\`\``
             };
         } else if (item.data === 12) {
             item.detail = 'Loop Enquanto - Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Loop enquanto**\n\n\`\`\`\n enquanto (condicao) \n{\n    // código repetitivo\n}\n\`\`\`\n\nExecuta código baseado em uma condição lógica.`
+                value: `**Loop enquanto**
+
+\`\`\`
+enquanto (condicao) 
+{
+    // código repetitivo
+}
+\`\`\``
             };
         } else if (item.data === 13) {
             item.detail = 'Loop Para - Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Loop for**\n\n\`\`\`\n para (inteiro i = 0; i < 10; i = i + 1) \n{\n    // código repetitivo\n}\n\`\`\`\n\nExecuta código baseado em uma condição lógica.`
+                value: `**Loop for**
+
+\`\`\`
+para (inteiro i = 0; i < 10; i = i + 1) 
+{
+    // código repetitivo
+}
+\`\`\``
             };
         } else if (item.data === 17) {
             item.detail = 'Construtor - Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Método Construtor**\n\n\`\`\`\n NomeClasse(parametros) \n{\n    // inicialização\n    // Sem palavra-chave 'construtor'\n}\n\`\`\`\n\nO construtor é declarado apenas com o nome da classe.`
+                value: `**Método Construtor**
+
+\`\`\`
+NomeClasse(parametros) 
+{
+    // inicialização
+    // Sem palavra-chave 'construtor'
+}
+\`\`\`
+
+O construtor é declarado apenas com o nome da classe.`
             };
         } else if (item.data === 18) {
             item.detail = 'Referência Este - Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Referência ao objeto atual**\n\nUsado para acessar propriedades e métodos da instância atual.\n\n\`\`\`\n este.propriedade = valor;\n este.metodo();\n\`\`\`\n\nReferência ao objeto atual.`
+                value: `**Referência ao objeto atual**
+
+Usado para acessar propriedades e métodos da instância atual.
+
+\`\`\`
+este.propriedade = valor;
+este.metodo();
+\`\`\``
             };
         } else if (item.data === 19) {
             item.detail = 'Instanciação - Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Criação de objeto**\n\n\`\`\`\n var objeto = novo MinhaClasse(argumentos);\n\`\`\`\n\nCriação de nova instância de classe.`
+                value: `**Criação de objeto**
+
+\`\`\`
+var objeto = novo MinhaClasse(argumentos);
+\`\`\``
             };
         } else if (item.data === 20) {
             item.detail = 'Namespace - Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Organização modular**\n\n\`\`\`\n espaco MeuNamespace \n{\n    classe MinhaClasse { }\n}\n\`\`\`\n\nOrganização modular do código.`
+                value: `**Organização modular**
+
+\`\`\`
+espaco MeuNamespace 
+{
+    classe MinhaClasse { }
+}
+\`\`\``
             };
         }
 
@@ -540,7 +539,7 @@ function getVariableNames(text: string): CompletionItem[] {
             label: match[1],
             kind: CompletionItemKind.Variable,
             insertText: match[1],
-            documentation: `Variável declarada: ${match[1]} `,
+            documentation: `Variável declarada: ${match[1]}`,
             detail: 'Variável - Por Do Sol',
             data: 100 + variables.length
         });
@@ -559,7 +558,7 @@ function getClassNames(text: string): CompletionItem[] {
             label: match[1],
             kind: CompletionItemKind.Class,
             insertText: match[1],
-            documentation: `Classe: ${match[1]} `,
+            documentation: `Classe: ${match[1]}`,
             detail: 'Classe - Por Do Sol',
             data: 200 + classes.length
         });
@@ -594,173 +593,8 @@ function isInsideClass(text: string, position: Position): boolean {
 }
 
 function getClassMembers(text: string, position: Position): CompletionItem[] {
-    const members: CompletionItem[] = [];
-    const lines = text.split('\n');
-    let classStartLine = -1;
-    let classEndLine = -1;
-    let braceCount = 0;
-    let currentClassName = '';
-
-    // Find the enclosing class block and its name
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const classMatch = line.match(/classe\s+(\w+)\s*{/);
-        if (classMatch && i <= position.line) {
-            classStartLine = i;
-            currentClassName = classMatch[1];
-            braceCount = 0; // Reset brace count for the new class
-        }
-
-        if (classStartLine !== -1) {
-            for (const char of line) {
-                if (char === '{') braceCount++;
-                if (char === '}') braceCount--;
-            }
-            if (braceCount === 0 && classStartLine !== -1 && i >= classStartLine) {
-                classEndLine = i;
-                if (position.line >= classStartLine && position.line <= classEndLine) {
-                    // Found the enclosing class
-                    break;
-                } else {
-                    classStartLine = -1; // Not the right class, reset
-                    currentClassName = '';
-                }
-            }
-        }
-    }
-
-    if (classStartLine === -1 || classEndLine === -1) {
-        return []; // Not inside a class
-    }
-
-    // Extract members within the class block
-    for (let i = classStartLine + 1; i < classEndLine; i++) {
-        const line = lines[i].trim();
-
-        // Match properties: (publico|privado|protegido)? (estática)? (inteiro|texto|booleano|vazio) (\w+);
-        let match = line.match(/^(publico|privado|protegido)?\s*(estática)?\s*(inteiro|texto|booleano|vazio)\s+(\w+)\s*(?:;|\=.*)?$/);
-        if (match) {
-            const memberName = match[4];
-            const memberType = match[3];
-            members.push({
-                label: memberName,
-                kind: CompletionItemKind.Property,
-                insertText: memberName,
-                documentation: `Propriedade: ${memberName} (${memberType})`,
-                detail: `Propriedade - Por Do Sol`
-            });
-            continue;
-        }
-
-        // Match methods: (publico|privado|protegido)? (estática)? função (\w+)\(.*\) => (inteiro|texto|booleano|vazio) {
-        match = line.match(/^(publico|privado|protegido)?\s*(estática)?\s*função\s+(\w+)\(.*\)\s*=>\s*(inteiro|texto|booleano|vazio)\s*{?$/);
-        if (match) {
-            const memberName = match[3];
-            const params = match[4];
-            const returnType = match[5];
-            members.push({
-                label: `${memberName}(${params})`,
-                kind: CompletionItemKind.Method,
-                insertText: `${memberName}(${params})`,
-                documentation: `Método: ${memberName}(${params}) => ${returnType}`,
-                detail: `Método - Por Do Sol`
-            });
-            continue;
-        }
-
-        // Match constructor: ClassName(params) {
-        match = line.match(new RegExp(`^${currentClassName}\s*\(.*\)\s*{?`));
-        if (match) {
-            const params = match[1];
-            members.push({
-                label: `${currentClassName}(${params})`,
-                kind: CompletionItemKind.Constructor,
-                insertText: `${currentClassName}(${params})`,
-                documentation: `Construtor: ${currentClassName}(${params})`,
-                detail: `Construtor - Por Do Sol`
-            });
-            continue;
-        }
-    }
-
-    return members;
-}
-
-function analyzeDocumentSymbols(textDocument: TextDocument): void {
-    const uri = textDocument.uri;
-    const text = textDocument.getText();
-    const lines = text.split('\n');
-
-    // Clear existing symbols for this document
-    documentSymbols.set(uri, new Map<string, SymbolInfo>());
-    const currentDocumentSymbols = documentSymbols.get(uri)!;
-
-    lines.forEach((lineText, i) => {
-        // Function declaration: função nome(parametros) => tipo {
-        let match = lineText.match(/função\s+(\w+)\s*\([^)]*\)\s*=>\s*\w+\s*{/);
-        if (match) {
-            const name = match[1];
-            currentDocumentSymbols.set(name, {
-                name: name,
-                kind: CompletionItemKind.Function,
-                definition: {
-                    uri: uri,
-                    range: { start: { line: i, character: lineText.indexOf(name) }, end: { line: i, character: lineText.indexOf(name) + name.length } }
-                },
-                references: []
-            });
-        }
-
-        // Class declaration: classe Nome {
-        match = lineText.match(/classe\s+(\w+)\s*{/);
-        if (match) {
-            const name = match[1];
-            currentDocumentSymbols.set(name, {
-                name: name,
-                kind: CompletionItemKind.Class,
-                definition: {
-                    uri: uri,
-                    range: { start: { line: i, character: lineText.indexOf(name) }, end: { line: i, character: lineText.indexOf(name) + name.length } }
-                },
-                references: []
-            });
-        }
-
-        // Variable declaration: (inteiro|texto|booleano|var) nome = ...;
-        match = lineText.match(/(?:inteiro|texto|booleano|var)\s+(\w+)\s*(=|;)/);
-        if (match) {
-            const name = match[1];
-            currentDocumentSymbols.set(name, {
-                name: name,
-                kind: CompletionItemKind.Variable,
-                definition: {
-                    uri: uri,
-                    range: { start: { line: i, character: lineText.indexOf(name) }, end: { line: i, character: lineText.indexOf(name) + name.length } }
-                },
-                references: []
-            });
-        }
-    });
-
-    // Collect references after all definitions are found
-    currentDocumentSymbols.forEach(symbol => {
-        const name = symbol.name;
-        const regex = new RegExp(`\\b${name}\\b`, 'g'); // Word boundary for exact match
-        lines.forEach((lineText, i) => {
-            let match;
-            while ((match = regex.exec(lineText)) !== null) {
-                // Avoid adding the definition itself as a reference
-                const isDefinition = (symbol.definition.range.start.line === i &&
-                    symbol.definition.range.start.character === match.index);
-                if (!isDefinition) {
-                    symbol.references.push({
-                        uri: uri,
-                        range: { start: { line: i, character: match.index }, end: { line: i, character: match.index + name.length } }
-                    });
-                }
-            }
-        });
-    });
+    // Implementar análise de membros da classe
+    return [];
 }
 
 // VALIDAÇÃO EXPANDIDA// VALIDAÇÃO EXPANDIDA E CORRIGIDA
@@ -769,10 +603,6 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
     const text = textDocument.getText();
     const diagnostics: Diagnostic[] = [];
     const lines = text.split('\n');
-
-    // Limpar e analisar símbolos para o documento atual
-    analyzeDocumentSymbols(textDocument);
-
 
     lines.forEach((line: string, index: number) => {
         const trimmed = line.trim();
@@ -794,7 +624,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
                 }
 
                 // Se encontrou início de construtor ou função
-                if (prevLine.match(/^(publico|privado|protegido)?\s*(função\s+\w*|[A-Z]\w*)\s*\(/)) {
+                if (prevLine.match(/^(publico|privado|protegido)?\s*(função\s+\w+|[A-Z]\w*)\s*\(/)) {
                     return true;
                 }
 
@@ -890,36 +720,6 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
             });
         }
 
-        // Validação de classes estáticas - membros devem ser estáticos
-        if (trimmed.includes('estática classe')) {
-            // Procurar próximas linhas para validar membros da classe estática
-            for (let i = index + 1; i < lines.length; i++) {
-                const memberLine = lines[i].trim();
-
-                // Se chegou ao fim da classe, parar
-                if (memberLine === '}' && !memberLine.includes('{ obter; definir; }')) {
-                    break;
-                }
-
-                // Se é uma propriedade ou método público/privado/protegido sem 'estática'
-                if (memberLine.match(/^(publico|privado|protegido)\s+(?!estática)\s*(texto|inteiro|booleano|vazio)\s+\w+/) &&
-                    !memberLine.includes('{ obter; definir; }') &&
-                    !memberLine.includes('//')) {
-
-                    diagnostics.push({
-                        severity: DiagnosticSeverity.Error,
-                        range: {
-                            start: { line: i, character: 0 },
-                            end: { line: i, character: memberLine.length }
-                        },
-                        message: 'Membros de classe estática devem usar o modificador "estática"',
-                        source: 'Por Do Sol Language Server',
-                        code: 'static-member-required'
-                    });
-                }
-            }
-        }
-
         // Validação para detectar uso incorreto da palavra 'construtor'
         if (trimmed.includes('construtor ') && !trimmed.startsWith('//')) {
             diagnostics.push({
@@ -960,150 +760,35 @@ connection.onHover((params: HoverParams): Hover | null => {
     }
 
     const word = wordMatch.word;
-    // Função auxiliar para buscar informações do símbolo
-    function getSymbolInfo(text: string, word: string): any {
-        // Exemplo simplificado: busca por variáveis, funções e classes
-        const variableRegex = new RegExp(`(?:inteiro|texto|booleano|var)\\s+${word}\\b`);
-        const functionRegex = new RegExp(`função\\s+${word}\\s*\\([^)]*\\)\\s*=>`);
-        const classRegex = new RegExp(`classe\\s+${word}\\b`);
-        if (variableRegex.test(text)) {
-            return { type: 'variable', name: word, dataType: 'desconhecido', scope: 'local' };
-        } else if (functionRegex.test(text)) {
-            return { type: 'function', name: word, signature: `${word}()`, returnType: 'desconhecido' };
-        } else if (classRegex.test(text)) {
-            return { type: 'class', name: word, members: [] };
-        }
-        // Palavras-chave
-        const keywords = ['se', 'classe', 'construtor', 'este', 'novo', 'espaco', 'var', 'função', 'sobrescreve', 'redefinível'];
-        if (keywords.includes(word)) {
-            return { type: 'keyword', name: word, documentation: staticHoverInfo[word] };
-        }
-        return null;
-    }
 
-    // Fallback para informações estáticas de palavras-chave
-    const staticHoverInfo: { [key: string]: string } = {
-        'se': '**Condicional** (Por Do Sol)\n\nEstrutura de controle para decisões lógicas.\n',
-        'classe': '**Orientação a Objetos** (Por Do Sol)\n\nDefinição de classe com propriedades e métodos.\n',
-        'construtor': '**Método Construtor** (Por Do Sol)\n\nUse apenas o nome da classe: NomeClasse() {...}\n',
-        'este': '**Referência ao Objeto** (Por Do Sol)\n\nUsado para acessar membros da instância atual.\n',
-        'novo': '**Instanciação** (Por Do Sol)\n\nCriação de nova instância de classe.\n',
-        'espaco': '**Namespace** (Por Do Sol)\n\nOrganização modular do código.\n',
-        'var': '**Inferência de Tipo** (Por Do Sol)\n\nDeclaração com tipo inferido automaticamente.\n',
-        'função': '**Declaração de Função** (Por Do Sol)\n\nDefinição de função com tipo de retorno.\n',
-        'sobrescreve': '**Modificador de Sobrescrita** (Por Do Sol)\n\nIndica que um método ou propriedade sobrescreve um membro da classe base.\n',
-        'redefinível': '**Modificador Redefinível** (Por Do Sol)\n\nPermite que um método ou propriedade seja sobrescrito em classes derivadas.\n'
+    const hoverInfo: { [key: string]: string } = {
+        'se': '**Condicional** (Por Do Sol)\n\nEstrutura de controle para decisões lógicas.\n\n``````',
+        'classe': '**Orientação a Objetos** (Por Do Sol)\n\nDefinição de classe com propriedades e métodos.\n\n``````',
+        'construtor': '**Método Construtor** (Por Do Sol)\n\nUse apenas o nome da classe: NomeClasse() {...}\n\n``````',
+        'este': '**Referência ao Objeto** (Por Do Sol)\n\nUsado para acessar membros da instância atual.\n\n``````',
+        'novo': '**Instanciação** (Por Do Sol)\n\nCriação de nova instância de classe.\n\n``````',
+        'espaco': '**Namespace** (Por Do Sol)\n\nOrganização modular do código.\n\n``````',
+        'var': '**Inferência de Tipo** (Por Do Sol)\n\nDeclaração com tipo inferido automaticamente.\n\n``````',
+        'Função': '**Declaração de Função** (Por Do Sol)\n\nDefinição de função com tipo de retorno.\n\n``````'
     };
 
-    const symbolInfo = getSymbolInfo(document.getText(), word);
-    if (symbolInfo) {
+    if (hoverInfo[word]) {
         const range: Range = {
             start: { line: position.line, character: wordMatch.start },
             end: { line: position.line, character: wordMatch.end }
         };
-        let markdownContent = '';
-        if (symbolInfo.type === 'variable') {
-            markdownContent = `**Variável**: ${symbolInfo.name}\n\nTipo: ${symbolInfo.dataType}\n\nEscopo: ${symbolInfo.scope}`;
-        } else if (symbolInfo.type === 'function') {
-            markdownContent = `**Função**: ${symbolInfo.name}\n\nAssinatura: ${symbolInfo.signature}\n\nRetorno: ${symbolInfo.returnType}`;
-        } else if (symbolInfo.type === 'class') {
-            markdownContent = `**Classe**: ${symbolInfo.name}`;
-        } else if (symbolInfo.type === 'keyword') {
-            markdownContent = symbolInfo.documentation;
-        }
+
         return {
             contents: {
                 kind: MarkupKind.Markdown,
-                value: markdownContent
+                value: hoverInfo[word]
             },
             range: range
         };
     }
-    return null;
-});
-
-// Go to Definition
-connection.onDefinition((params: TextDocumentPositionParams): Location | null => {
-    const document = documents.get(params.textDocument.uri);
-    if (!document) {
-        return null;
-    }
-
-    const wordMatch = getWordAtPosition(document.getText().split('\n')[params.position.line], params.position.character);
-    if (!wordMatch) {
-        return null;
-    }
-
-    const word = wordMatch.word;
-    const symbolsInDocument = documentSymbols.get(document.uri);
-
-    if (symbolsInDocument && symbolsInDocument.has(word)) {
-        return symbolsInDocument.get(word)!.definition;
-    }
 
     return null;
 });
-
-// Find All References
-connection.onReferences((params: ReferenceParams): Location[] | null => {
-    const document = documents.get(params.textDocument.uri);
-    if (!document) {
-        return null;
-    }
-
-    const wordMatch = getWordAtPosition(document.getText().split('\n')[params.position.line], params.position.character);
-    if (!wordMatch) {
-        return null;
-    }
-
-    const word = wordMatch.word;
-    const symbolsInDocument = documentSymbols.get(document.uri);
-
-    if (symbolsInDocument && symbolsInDocument.has(word)) {
-        return symbolsInDocument.get(word)!.references;
-    }
-
-    return null;
-});
-
-connection.onDocumentFormatting((params: DocumentFormattingParams): TextEdit[] => {
-    const document = documents.get(params.textDocument.uri);
-    if (!document) {
-        return [];
-    }
-
-    const text = document.getText();
-    const formattedText = formatPordosolCode(text, params.options.tabSize);
-
-    return [
-        TextEdit.replace(
-            Range.create(document.positionAt(0), document.positionAt(text.length)),
-            formattedText
-        )
-    ];
-});
-
-function formatPordosolCode(text: string, tabSize: number): string {
-    const lines = text.split('\n');
-    let indentLevel = 0;
-    const indentChar = ' '.repeat(tabSize);
-
-    return lines.map(line => {
-        const trimmedLine = line.trim();
-        if (trimmedLine.startsWith('}') || trimmedLine.startsWith(')')) {
-            indentLevel = Math.max(0, indentLevel - 1);
-        }
-
-        const indentedLine = indentChar.repeat(indentLevel) + trimmedLine;
-
-        if (trimmedLine.endsWith('{') || trimmedLine.endsWith('(')) {
-            indentLevel++;
-        }
-
-        return indentedLine;
-    }).join('\n');
-}
-
 
 function getWordAtPosition(line: string, character: number): { word: string; start: number; end: number } | null {
     const wordRegex = /[a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*/g;
