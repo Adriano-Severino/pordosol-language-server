@@ -316,6 +316,22 @@ connection.onCompletion(
                 documentation: 'Modificador para membros estáticos da classe',
                 detail: 'Modificador estático - Por Do Sol',
                 data: 30
+            },
+            {
+                label: 'sobrescreve',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'sobrescreve ',
+                documentation: 'Modificador para sobrescrever um membro redefinível (override)',
+                detail: 'Modificador de Sobrescrita - Por Do Sol',
+                data: 31
+            },
+            {
+                label: 'redefinível',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'redefinível ',
+                documentation: 'Modificador para permitir que um membro seja sobrescrito em classes derivadas (virtual)',
+                detail: 'Modificador Redefinível - Por Do Sol',
+                data: 32
             }
         ];
 
@@ -958,7 +974,7 @@ connection.onHover((params: HoverParams): Hover | null => {
             return { type: 'class', name: word, members: [] };
         }
         // Palavras-chave
-        const keywords = ['se', 'classe', 'construtor', 'este', 'novo', 'espaco', 'var', 'função'];
+        const keywords = ['se', 'classe', 'construtor', 'este', 'novo', 'espaco', 'var', 'função', 'sobrescreve', 'redefinível'];
         if (keywords.includes(word)) {
             return { type: 'keyword', name: word, documentation: staticHoverInfo[word] };
         }
@@ -974,7 +990,9 @@ connection.onHover((params: HoverParams): Hover | null => {
         'novo': '**Instanciação** (Por Do Sol)\n\nCriação de nova instância de classe.\n',
         'espaco': '**Namespace** (Por Do Sol)\n\nOrganização modular do código.\n',
         'var': '**Inferência de Tipo** (Por Do Sol)\n\nDeclaração com tipo inferido automaticamente.\n',
-        'função': '**Declaração de Função** (Por Do Sol)\n\nDefinição de função com tipo de retorno.\n'
+        'função': '**Declaração de Função** (Por Do Sol)\n\nDefinição de função com tipo de retorno.\n',
+        'sobrescreve': '**Modificador de Sobrescrita** (Por Do Sol)\n\nIndica que um método ou propriedade sobrescreve um membro da classe base.\n',
+        'redefinível': '**Modificador Redefinível** (Por Do Sol)\n\nPermite que um método ou propriedade seja sobrescrito em classes derivadas.\n'
     };
 
     const symbolInfo = getSymbolInfo(document.getText(), word);

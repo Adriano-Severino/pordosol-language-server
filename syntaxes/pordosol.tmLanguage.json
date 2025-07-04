@@ -60,7 +60,7 @@
                 },
                 {
                     "name": "storage.modifier.pordosol",
-                    "match": "\\b(publico|privado|protegido|estática)\\b"
+                    "match": "\b(publico|privado|protegido|estática|sobrescreve|redefinível)\b"
                 },
                 {
                     "name": "constant.language.boolean.pordosol",
