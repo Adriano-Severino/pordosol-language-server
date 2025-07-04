@@ -279,6 +279,30 @@ connection.onCompletion(
                 documentation: 'Modificador de acesso protegido',
                 detail: 'Acesso - Por Do Sol',
                 data: 23
+            },
+            {
+                label: 'estática',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'estática ',
+                documentation: 'Modificador para membros estáticos da classe',
+                detail: 'Modificador estático - Por Do Sol',
+                data: 30
+            },
+            {
+                label: 'sobrescreve',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'sobrescreve ',
+                documentation: 'Modificador para sobrescrever um membro redefinível (override)',
+                detail: 'Modificador de Sobrescrita - Por Do Sol',
+                data: 31
+            },
+            {
+                label: 'redefinível',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'redefinível ',
+                documentation: 'Modificador para permitir que um membro seja sobrescrito em classes derivadas (virtual)',
+                detail: 'Modificador Redefinível - Por Do Sol',
+                data: 32
             }
         ];
 
@@ -760,16 +784,39 @@ connection.onHover((params: HoverParams): Hover | null => {
     }
 
     const word = wordMatch.word;
+    // Função auxiliar para buscar informações do símbolo
+    function getSymbolInfo(text: string, word: string): any {
+        // Exemplo simplificado: busca por variáveis, funções e classes
+        const variableRegex = new RegExp(`(?:inteiro|texto|booleano|var)\\s+${word}\\b`);
+        const functionRegex = new RegExp(`função\\s+${word}\\s*\\([^)]*\\)\\s*=>`);
+        const classRegex = new RegExp(`classe\\s+${word}\\b`);
+        if (variableRegex.test(text)) {
+            return { type: 'variable', name: word, dataType: 'desconhecido', scope: 'local' };
+        } else if (functionRegex.test(text)) {
+            return { type: 'function', name: word, signature: `${word}()`, returnType: 'desconhecido' };
+        } else if (classRegex.test(text)) {
+            return { type: 'class', name: word, members: [] };
+        }
+        // Palavras-chave
+        const keywords = ['se', 'classe', 'construtor', 'este', 'novo', 'espaco', 'var', 'função', 'sobrescreve', 'redefinível'];
+        if (keywords.includes(word)) {
+            return { type: 'keyword', name: word, documentation: staticHoverInfo[word] };
+        }
+        return null;
+    }
 
-    const hoverInfo: { [key: string]: string } = {
-        'se': '**Condicional** (Por Do Sol)\n\nEstrutura de controle para decisões lógicas.\n\n``````',
-        'classe': '**Orientação a Objetos** (Por Do Sol)\n\nDefinição de classe com propriedades e métodos.\n\n``````',
-        'construtor': '**Método Construtor** (Por Do Sol)\n\nUse apenas o nome da classe: NomeClasse() {...}\n\n``````',
-        'este': '**Referência ao Objeto** (Por Do Sol)\n\nUsado para acessar membros da instância atual.\n\n``````',
-        'novo': '**Instanciação** (Por Do Sol)\n\nCriação de nova instância de classe.\n\n``````',
-        'espaco': '**Namespace** (Por Do Sol)\n\nOrganização modular do código.\n\n``````',
-        'var': '**Inferência de Tipo** (Por Do Sol)\n\nDeclaração com tipo inferido automaticamente.\n\n``````',
-        'Função': '**Declaração de Função** (Por Do Sol)\n\nDefinição de função com tipo de retorno.\n\n``````'
+    // Fallback para informações estáticas de palavras-chave
+    const staticHoverInfo: { [key: string]: string } = {
+        'se': '**Condicional** (Por Do Sol)\n\nEstrutura de controle para decisões lógicas.\n',
+        'classe': '**Orientação a Objetos** (Por Do Sol)\n\nDefinição de classe com propriedades e métodos.\n',
+        'construtor': '**Método Construtor** (Por Do Sol)\n\nUse apenas o nome da classe: NomeClasse() {...}\n',
+        'este': '**Referência ao Objeto** (Por Do Sol)\n\nUsado para acessar membros da instância atual.\n',
+        'novo': '**Instanciação** (Por Do Sol)\n\nCriação de nova instância de classe.\n',
+        'espaco': '**Namespace** (Por Do Sol)\n\nOrganização modular do código.\n',
+        'var': '**Inferência de Tipo** (Por Do Sol)\n\nDeclaração com tipo inferido automaticamente.\n',
+        'função': '**Declaração de Função** (Por Do Sol)\n\nDefinição de função com tipo de retorno.\n',
+        'sobrescreve': '**Modificador de Sobrescrita** (Por Do Sol)\n\nIndica que um método ou propriedade sobrescreve um membro da classe base.\n',
+        'redefinível': '**Modificador Redefinível** (Por Do Sol)\n\nPermite que um método ou propriedade seja sobrescrito em classes derivadas.\n'
     };
 
     if (hoverInfo[word]) {
