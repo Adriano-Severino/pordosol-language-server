@@ -367,7 +367,15 @@ connection.onCompletion(
                 documentation: 'Tipo void para funções que não retornam valor',
                 detail: 'Tipo de dados - Por Do Sol',
                 data: 27
-            }
+            },
+            {
+                label: 'decimal',
+                kind: CompletionItemKind.TypeParameter,
+                insertText: 'decimal ${1:nome} = ${2:0.0m};',
+                documentation: 'Tipo de dados para números decimais de alta precisão, similar ao C#',
+                detail: 'Tipo de dados decimal - Por Do Sol',
+                data: 33
+            },
         ];
 
         const values = [
