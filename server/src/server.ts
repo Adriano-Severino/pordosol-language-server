@@ -375,7 +375,7 @@ connection.onCompletion(
                 documentation: 'Tipo de dados para números decimais de alta precisão, similar ao C#',
                 detail: 'Tipo de dados decimal - Por Do Sol',
                 data: 33
-            },
+            }
         ];
 
         const values = [
