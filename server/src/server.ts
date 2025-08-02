@@ -825,9 +825,11 @@ connection.onHover((params: HoverParams): Hover | null => {
         'função': '**Declaração de Função** (Por Do Sol)\n\nDefinição de função com tipo de retorno.\n',
         'sobrescreve': '**Modificador de Sobrescrita** (Por Do Sol)\n\nIndica que um método ou propriedade sobrescreve um membro da classe base.\n',
         'redefinível': '**Modificador Redefinível** (Por Do Sol)\n\nPermite que um método ou propriedade seja sobrescrito em classes derivadas.\n'
+        ,
+        'decimal': '**Tipo decimal** (Por Do Sol)\n\nTipo de dados para números decimais de alta precisão, similar ao C#.\nExemplo: `decimal meuDecimal = 10.5m;`'
     };
 
-    if (hoverInfo[word]) {
+    if (staticHoverInfo[word]) {
         const range: Range = {
             start: { line: position.line, character: wordMatch.start },
             end: { line: position.line, character: wordMatch.end }
@@ -836,7 +838,7 @@ connection.onHover((params: HoverParams): Hover | null => {
         return {
             contents: {
                 kind: MarkupKind.Markdown,
-                value: hoverInfo[word]
+                value: staticHoverInfo[word]
             },
             range: range
         };
