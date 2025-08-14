@@ -56,11 +56,11 @@
                 },
                 {
                     "name": "keyword.other.pordosol",
-                    "match": "\\b(espaco|classe|construtor|var)\\b"
+                    "match": "\\b(espaco|usando|classe|construtor|var|interface)\\b"
                 },
                 {
                     "name": "storage.modifier.pordosol",
-                    "match": "\b(publico|privado|protegido|estática|sobrescreve|redefinível)\b"
+                    "match": "\\b(publico|privado|protegido|estática|sobrescreve|redefinível|abstrata)\\b"
                 },
                 {
                     "name": "constant.language.boolean.pordosol",
@@ -72,7 +72,7 @@
             "patterns": [
                 {
                     "name": "storage.type.pordosol",
-                    "match": "\\b(inteiro|texto|booleano|vazio)\\b"
+                    "match": "\\b(inteiro|texto|booleano|vazio|duplo|flutuante|decimal)\\b"
                 }
             ]
         },
@@ -97,6 +97,10 @@
                 {
                     "name": "keyword.operator.access.pordosol",
                     "match": "\\."
+                },
+                {
+                    "name": "keyword.operator.inheritance.pordosol",
+                    "match": ":"
                 },
                 {
                     "name": "keyword.operator.arrow.pordosol",
@@ -139,6 +143,10 @@
         "numbers": {
             "patterns": [
                 {
+                    "name": "constant.numeric.float.pordosol",
+                    "match": "\\b((?:[0-9]+\\.[0-9]*|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?|[0-9]+\\.[0-9]*[eE][+-]?[0-9]+)\\b"
+                },
+                {
                     "name": "constant.numeric.pordosol",
                     "match": "\\b[0-9]+\\b"
                 }
@@ -156,7 +164,7 @@
             "patterns": [
                 {
                     "name": "entity.name.function.pordosol",
-                    "match": "\\b[a-z][a-zA-Z0-9_]*(?=\\s*\\()"
+                    "match": "\\b[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_]*(?=\\s*\\())"
                 }
             ]
         },

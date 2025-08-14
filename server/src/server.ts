@@ -48,7 +48,8 @@ connection.onInitialize((params: InitializeParams) => {
             textDocumentSync: TextDocumentSyncKind.Incremental,
             completionProvider: {
                 resolveProvider: true,
-                triggerCharacters: ['.', ' ', '(', '=', 's', 'e', 'i', 't', 'b', 'c', 'f', 'n', '$', '{']
+                // adiciona ':' para sugerir após herança
+                triggerCharacters: ['.', ' ', '(', '=', ':', 's', 'e', 'i', 't', 'b', 'c', 'f', 'n', '$', '{']
             },
             hoverProvider: true,
             signatureHelpProvider: {
@@ -207,6 +208,14 @@ connection.onCompletion(
                 documentation: 'Declaração com inferência de tipo',
                 detail: 'Inferência de tipo - Por Do Sol',
                 data: 16
+            },
+            {
+                label: 'usando',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'usando ${1:Namespace};',
+                documentation: 'Importa tipos de um namespace (similar a using em C#)',
+                detail: 'Import - Por Do Sol',
+                data: 41
             }
         ];
 
@@ -303,6 +312,14 @@ connection.onCompletion(
                 documentation: 'Modificador para permitir que um membro seja sobrescrito em classes derivadas (virtual)',
                 detail: 'Modificador Redefinível - Por Do Sol',
                 data: 32
+            },
+            {
+                label: 'abstrata',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'abstrata ',
+                documentation: 'Define classe ou método abstrato que deve ser implementado por classes derivadas',
+                detail: 'Modificador Abstrato - Por Do Sol',
+                data: 34
             }
         ];
 
@@ -347,6 +364,22 @@ connection.onCompletion(
                 documentation: 'Tipo de dados para números decimais de alta precisão, similar ao C#',
                 detail: 'Tipo de dados decimal - Por Do Sol',
                 data: 33
+            },
+            {
+                label: 'duplo',
+                kind: CompletionItemKind.TypeParameter,
+                insertText: 'duplo ${1:nome} = ${2:0.0};',
+                documentation: 'Tipo de ponto flutuante de dupla precisão (64 bits), equivalente a double',
+                detail: 'Tipo de dados - Por Do Sol',
+                data: 35
+            },
+            {
+                label: 'flutuante',
+                kind: CompletionItemKind.TypeParameter,
+                insertText: 'flutuante ${1:nome} = ${2:0.0f};',
+                documentation: 'Tipo de ponto flutuante de precisão simples (32 bits), equivalente a float',
+                detail: 'Tipo de dados - Por Do Sol',
+                data: 36
             }
         ];
 
@@ -562,7 +595,7 @@ espaco MeuNamespace
 
 // Funções auxiliares expandidas
 function getVariableNames(text: string): CompletionItem[] {
-    const variableRegex = /(?:inteiro|texto|booleano|var)\s+(\w+)/g;
+    const variableRegex = /(?:inteiro|texto|booleano|duplo|flutuante|decimal|var)\s+(\w+)/g;
     const variables: CompletionItem[] = [];
     let match;
 
@@ -696,6 +729,7 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         );
 
         // NÃO VALIDAR se:
+        const isClassDecl = /^(publico|privado|protegido)?\s*(abstrata\s+)?classe\b/.test(trimmed);
         const skipValidation = (
             isInsideMethodSignature(index) ||           // Dentro de assinatura de método
             isInsidePropertyBlock(index) ||             // Dentro de bloco de propriedades
@@ -703,9 +737,9 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
             trimmed.endsWith('}') ||                    // Linha termina com fechamento de chave
             trimmed.endsWith(',') ||                    // Linha termina com vírgula (parâmetro continua)
             trimmed.endsWith(')') ||                    // Linha termina com parênteses (fim de parâmetros)
-            trimmed.includes('publico classe') ||       // Declaração de classe
+            isClassDecl ||                               // Declaração de classe (inclui abstrata)
             trimmed.includes('espaco ') ||              // Declaração de namespace
-            trimmed.match(/^(publico|privado|protegido)\s+(inteiro|texto|booleano)\s+\w+\s*{/) // Propriedade com getter/setter
+            trimmed.match(/^(publico|privado|protegido)\s+(inteiro|texto|booleano|duplo|flutuante|decimal)\s+\w+\s*{/) // Propriedade com getter/setter
         );
 
         if (shouldEndWithSemicolon && !skipValidation) {
@@ -806,7 +840,7 @@ connection.onHover((params: HoverParams): Hover | null => {
             return { type: 'class', name: word, members: [] };
         }
         // Palavras-chave
-        const keywords = ['se', 'classe', 'construtor', 'este', 'novo', 'espaco', 'var', 'função', 'sobrescreve', 'redefinível'];
+        const keywords = ['se', 'classe', 'construtor', 'este', 'novo', 'espaco', 'usando', 'var', 'função', 'sobrescreve', 'redefinível', 'abstrata'];
         if (keywords.includes(word)) {
             return { type: 'keyword', name: word, documentation: staticHoverInfo[word] };
         }
@@ -826,7 +860,11 @@ connection.onHover((params: HoverParams): Hover | null => {
         'sobrescreve': '**Modificador de Sobrescrita** (Por Do Sol)\n\nIndica que um método ou propriedade sobrescreve um membro da classe base.\n',
         'redefinível': '**Modificador Redefinível** (Por Do Sol)\n\nPermite que um método ou propriedade seja sobrescrito em classes derivadas.\n'
         ,
-        'decimal': '**Tipo decimal** (Por Do Sol)\n\nTipo de dados para números decimais de alta precisão, similar ao C#.\nExemplo: `decimal meuDecimal = 10.5m;`'
+        'decimal': '**Tipo decimal** (Por Do Sol)\n\nTipo de dados para números decimais de alta precisão, similar ao C#.\nExemplo: `decimal meuDecimal = 10.5m;`',
+        'duplo': '**Tipo duplo (double)** (Por Do Sol)\n\nPonto flutuante de 64 bits. Exemplo: `duplo x = 3.0;`',
+        'flutuante': '**Tipo flutuante (float)** (Por Do Sol)\n\nPonto flutuante de 32 bits. Exemplo: `flutuante y = 2.5f;`',
+        'abstrata': '**Modificador Abstrato** (Por Do Sol)\n\nDefine classes e métodos sem implementação, a serem implementados por derivados. ',
+        'usando': '**Importação de Namespace** (Por Do Sol)\n\nEx.: `usando Testes;`'
     };
 
     if (staticHoverInfo[word]) {
