@@ -32,6 +32,9 @@
         },
         {
             "include": "#namespaces"
+        },
+        {
+            "include": "#members"
         }
     ],
     "repository": {
@@ -51,19 +54,23 @@
         "keywords": {
             "patterns": [
                 {
-                    "name": "keyword.control.pordosol",
+                    "name": "keyword.control",
                     "match": "\\b(se|então|senão|enquanto|para|função|retorne|imprima|novo|este)\\b"
                 },
                 {
-                    "name": "keyword.other.pordosol",
+                    "name": "storage.type.class",
+                    "match": "\\b(classe|interface)\\b"
+                },
+                {
+                    "name": "keyword.other.using",
                     "match": "\\b(espaco|usando|classe|construtor|var|interface)\\b"
                 },
                 {
-                    "name": "storage.modifier.pordosol",
+                    "name": "storage.modifier",
                     "match": "\\b(publico|privado|protegido|estática|sobrescreve|redefinível|abstrata)\\b"
                 },
                 {
-                    "name": "constant.language.boolean.pordosol",
+                    "name": "constant.language.boolean",
                     "match": "\\b(verdadeiro|falso)\\b"
                 }
             ]
@@ -71,7 +78,7 @@
         "types": {
             "patterns": [
                 {
-                    "name": "storage.type.pordosol",
+                    "name": "storage.type",
                     "match": "\\b(inteiro|texto|booleano|vazio|duplo|flutuante|decimal)\\b"
                 }
             ]
@@ -79,53 +86,53 @@
         "operators": {
             "patterns": [
                 {
-                    "name": "keyword.operator.assignment.pordosol",
+                    "name": "keyword.operator.assignment",
                     "match": "="
                 },
                 {
-                    "name": "keyword.operator.comparison.pordosol",
+                    "name": "keyword.operator.comparison",
                     "match": "(==|!=|<=|>=|<|>)"
                 },
                 {
-                    "name": "keyword.operator.arithmetic.pordosol",
+                    "name": "keyword.operator.arithmetic",
                     "match": "(\\+|\\-|\\*|/|%)"
                 },
                 {
-                    "name": "keyword.operator.logical.pordosol",
+                    "name": "keyword.operator.logical",
                     "match": "(&&|\\|\\||!)"
                 },
                 {
-                    "name": "keyword.operator.access.pordosol",
+                    "name": "punctuation.accessor",
                     "match": "\\."
                 },
                 {
-                    "name": "keyword.operator.inheritance.pordosol",
+                    "name": "punctuation.separator.inheritance",
                     "match": ":"
                 },
                 {
-                    "name": "keyword.operator.arrow.pordosol",
+                    "name": "storage.type.function.arrow",
                     "match": "=>"
                 }
             ]
         },
         "strings": {
-            "name": "string.quoted.double.pordosol",
+            "name": "string.quoted.double",
             "begin": "\"",
             "end": "\"",
             "patterns": [
                 {
-                    "name": "constant.character.escape.pordosol",
+                    "name": "constant.character.escape",
                     "match": "\\\\."
                 }
             ]
         },
         "interpolated-strings": {
-            "name": "string.interpolated.pordosol",
+            "name": "string.interpolated",
             "begin": "\\$\"",
             "end": "\"",
             "patterns": [
                 {
-                    "name": "meta.interpolation.pordosol",
+                    "name": "meta.interpolation",
                     "begin": "\\{",
                     "end": "\\}",
                     "patterns": [
@@ -135,7 +142,7 @@
                     ]
                 },
                 {
-                    "name": "constant.character.escape.pordosol",
+                    "name": "constant.character.escape",
                     "match": "\\\\."
                 }
             ]
@@ -143,11 +150,11 @@
         "numbers": {
             "patterns": [
                 {
-                    "name": "constant.numeric.float.pordosol",
+                    "name": "constant.numeric.float",
                     "match": "\\b((?:[0-9]+\\.[0-9]*|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?|[0-9]+\\.[0-9]*[eE][+-]?[0-9]+)\\b"
                 },
                 {
-                    "name": "constant.numeric.pordosol",
+                    "name": "constant.numeric.integer",
                     "match": "\\b[0-9]+\\b"
                 }
             ]
@@ -155,7 +162,7 @@
         "classes": {
             "patterns": [
                 {
-                    "name": "entity.name.type.class.pordosol",
+                    "name": "entity.name.type",
                     "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
                 }
             ]
@@ -163,7 +170,7 @@
         "functions": {
             "patterns": [
                 {
-                    "name": "entity.name.function.pordosol",
+                    "name": "entity.name.function",
                     "match": "\\b[A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_]*(?=\\s*\\())"
                 }
             ]
@@ -171,8 +178,20 @@
         "namespaces": {
             "patterns": [
                 {
-                    "name": "entity.name.type.namespace.pordosol",
+                    "name": "entity.name.namespace",
                     "match": "(?<=espaco\\s+)\\b[A-Z][a-zA-Z0-9_]*\\b"
+                }
+            ]
+        },
+        "members": {
+            "patterns": [
+                {
+                    "name": "variable.other.member",
+                    "match": "(?<=\\.)([A-Za-zÀ-ÿ_][A-Za-zÀ-ÿ0-9_]*)"
+                },
+                {
+                    "name": "entity.name.function.constructor",
+                    "match": "(?<=construtor\\s)\\b[A-Z][a-zA-Z0-9_]*\\b"
                 }
             ]
         }
