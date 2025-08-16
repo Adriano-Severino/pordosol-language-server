@@ -6,6 +6,7 @@ import {
     ServerOptions,
     TransportKind
 } from 'vscode-languageclient/node';
+import { registerDebugAdapter } from './debugAdapter';
 
 let client: LanguageClient;
 
@@ -46,6 +47,9 @@ export function activate(context: ExtensionContext) {
 
     // Iniciar o cliente
     client.start();
+
+    // Registrar Debug Adapter (MVP)
+    registerDebugAdapter(context);
 }
 
 export function deactivate(): Promise<void> | undefined {

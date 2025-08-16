@@ -50,6 +50,55 @@
                 "path": "./syntaxes/pordosol.tmLanguage.json"
             }
         ],
+        "debuggers": [
+            {
+                "type": "pordosol",
+                "label": "Por Do Sol (Interpretador)",
+                "languages": [
+                    "pordosol"
+                ],
+                "configurationAttributes": {
+                    "launch": {
+                        "required": [
+                            "program"
+                        ],
+                        "properties": {
+                            "program": {
+                                "type": "string",
+                                "description": "Caminho para o arquivo .pbc a executar",
+                                "default": "${fileDirname}/${fileBasenameNoExtension}.pbc"
+                            },
+                            "cwd": {
+                                "type": "string",
+                                "description": "Diretório de trabalho",
+                                "default": "${workspaceFolder}"
+                            },
+                            "interpreterPath": {
+                                "type": "string",
+                                "description": "Caminho do interpretador (interpretador.exe)",
+                                "default": "${workspaceFolder}/compilador-portugues/target/debug/interpretador.exe"
+                            },
+                            "args": {
+                                "type": "array",
+                                "description": "Argumentos adicionais",
+                                "default": []
+                            }
+                        }
+                    }
+                },
+                "initialConfigurations": [
+                    {
+                        "type": "pordosol",
+                        "request": "launch",
+                        "name": "Depurar Por Do Sol (.pbc)",
+                        "program": "${fileDirname}/${fileBasenameNoExtension}.pbc",
+                        "cwd": "${workspaceFolder}",
+                        "interpreterPath": "${workspaceFolder}/compilador-portugues/target/debug/interpretador.exe",
+                        "args": []
+                    }
+                ]
+            }
+        ],
         "configuration": {
             "type": "object",
             "title": "Por Do Sol Language Server",
