@@ -59,15 +59,27 @@
                 },
                 {
                     "name": "storage.type.class",
-                    "match": "\\b(classe|interface)\\b"
+                    "match": "\\b(classe|interface|enumeração)\\b"
                 },
                 {
                     "name": "keyword.other.using",
-                    "match": "\\b(espaco|usando|classe|construtor|var|interface)\\b"
+                    "match": "\\b(espaco|usando|var)\\b"
                 },
                 {
                     "name": "storage.modifier",
                     "match": "\\b(publico|privado|protegido|estática|sobrescreve|redefinível|abstrata)\\b"
+                },
+                {
+                    "name": "keyword.other.base",
+                    "match": "\\b(base)\\b"
+                },
+                {
+                    "name": "keyword.other.accessor",
+                    "match": "\\b(obter|definir)\\b"
+                },
+                {
+                    "name": "keyword.other.constructor",
+                    "match": "\\b(construtor)\\b"
                 },
                 {
                     "name": "constant.language.boolean",
@@ -150,7 +162,15 @@
         "numbers": {
             "patterns": [
                 {
+                    "name": "constant.numeric.decimal",
+                    "match": "\\b[0-9]+\\.[0-9]+[mM]\\b"
+                },
+                {
                     "name": "constant.numeric.float",
+                    "match": "\\b[0-9]+\\.[0-9]+[fF]\\b"
+                },
+                {
+                    "name": "constant.numeric.double",
                     "match": "\\b((?:[0-9]+\\.[0-9]*|\\.[0-9]+)(?:[eE][+-]?[0-9]+)?|[0-9]+\\.[0-9]*[eE][+-]?[0-9]+)\\b"
                 },
                 {
