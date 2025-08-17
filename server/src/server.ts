@@ -32,6 +32,7 @@ connection.onInitialize((params: InitializeParams) => {
     const capabilities = params.capabilities;
 
     hasConfigurationCapability = !!(
+        
         capabilities.workspace && !!capabilities.workspace.configuration
     );
     hasWorkspaceFolderCapability = !!(
