@@ -11,12 +11,25 @@ import {
     TextDocumentPositionParams,
     TextDocumentSyncKind,
     InitializeResult,
+    DocumentSymbol,
+    DocumentSymbolParams,
+    SymbolKind,
+    SymbolInformation,
+    WorkspaceSymbolParams,
+    DefinitionParams,
+    Location,
     TextDocumentChangeEvent,
     HoverParams,
     Hover,
     MarkupKind,
     Position,
     Range
+} from 'vscode-languageserver/node';
+import {
+    SignatureHelpParams,
+    SignatureHelp,
+    SignatureInformation,
+    ParameterInformation
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -32,7 +45,7 @@ connection.onInitialize((params: InitializeParams) => {
     const capabilities = params.capabilities;
 
     hasConfigurationCapability = !!(
-        
+
         capabilities.workspace && !!capabilities.workspace.configuration
     );
     hasWorkspaceFolderCapability = !!(
@@ -47,6 +60,13 @@ connection.onInitialize((params: InitializeParams) => {
     const result: InitializeResult = {
         capabilities: {
             textDocumentSync: TextDocumentSyncKind.Incremental,
+            definitionProvider: true,
+            documentSymbolProvider: true,
+            workspaceSymbolProvider: true,
+            diagnosticProvider: {
+                interFileDependencies: false,
+                workspaceDiagnostics: false
+            },
             completionProvider: {
                 resolveProvider: true,
                 // adiciona ':' para sugerir após herança
@@ -659,12 +679,42 @@ function isInsideClass(text: string, position: Position): boolean {
 }
 
 function getClassMembers(text: string, position: Position): CompletionItem[] {
-    // Implementar análise de membros da classe
-    return [];
+    const completions: CompletionItem[] = [];
+    const symbols = buildDocumentSymbols(text);
+
+    // Encontra a classe que contém a posição
+    const cls = findEnclosingClass(symbols, position);
+    if (cls) {
+        const children = cls.children || [];
+        for (const c of children) {
+            if (c.kind === SymbolKind.Method) {
+                completions.push({
+                    label: c.name,
+                    kind: CompletionItemKind.Method,
+                    insertText: `${c.name}($1)`
+                });
+            } else if (c.kind === SymbolKind.Property) {
+                completions.push({
+                    label: c.name,
+                    kind: CompletionItemKind.Property,
+                    insertText: c.name
+                });
+            }
+        }
+    }
+
+    // Heurística: se linha contém VARIAVEL., tentar deduzir tipo básico e sugerir membros da classe correspondente
+    const lineStart = { line: position.line, character: 0 };
+    const lineEnd = { line: position.line + 1, character: 0 };
+    const lineText = documents.get(Array.from(documents.keys())[0] || '') ? '' : '';
+    // Como não temos acesso direto ao documento aqui, mantemos apenas membros de 'este.' via classe atual.
+    // Futuro: ampliar para resolver tipos de variáveis (var x = novo Classe();) e sugerir membros de Classe.
+
+    return completions;
 }
 
-// VALIDAÇÃO EXPANDIDA// VALIDAÇÃO EXPANDIDA E CORRIGIDA
-async function validateTextDocument(textDocument: TextDocument): Promise<void> {
+// VALIDAÇÃO EXPANDIDA - Função para calcular diagnósticos (reutilizável)
+async function computeDiagnostics(textDocument: TextDocument): Promise<Diagnostic[]> {
     const settings = await getDocumentSettings(textDocument.uri);
     const text = textDocument.getText();
     const diagnostics: Diagnostic[] = [];
@@ -802,11 +852,28 @@ async function validateTextDocument(textDocument: TextDocument): Promise<void> {
         }
     });
 
-    connection.sendDiagnostics({
-        uri: textDocument.uri,
-        diagnostics: diagnostics.slice(0, settings.maxNumberOfProblems)
-    });
+    return diagnostics.slice(0, settings.maxNumberOfProblems);
 }
+
+// Envio de diagnósticos por push (compatibilidade)
+async function validateTextDocument(textDocument: TextDocument): Promise<void> {
+    const diagnostics = await computeDiagnostics(textDocument);
+    connection.sendDiagnostics({ uri: textDocument.uri, diagnostics });
+}
+
+// Suporte ao protocolo de diagnósticos por pull
+connection.onRequest('textDocument/diagnostic', async (params: any) => {
+    try {
+        const uri: string | undefined = params?.textDocument?.uri;
+        if (!uri) return { kind: 'full', items: [] };
+        const doc = documents.get(uri);
+        if (!doc) return { kind: 'full', items: [] };
+        const items = await computeDiagnostics(doc);
+        return { kind: 'full', items };
+    } catch {
+        return { kind: 'full', items: [] };
+    }
+});
 
 // HOVER EXPANDIDO
 connection.onHover((params: HoverParams): Hover | null => {
@@ -886,6 +953,134 @@ connection.onHover((params: HoverParams): Hover | null => {
     return null;
 });
 
+// SIGNATURE HELP (parâmetros enquanto digita)
+connection.onSignatureHelp((params: SignatureHelpParams): SignatureHelp | null => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return null;
+    const pos = params.position;
+    const text = document.getText();
+    const lines = text.split('\n');
+    const line = lines[pos.line] || '';
+
+    // Encontra o nome da função/método antes do '('
+    const uptoChar = line.slice(0, pos.character);
+    const callMatch = /(\w+)\s*\($/.exec(uptoChar) || /(\w+)\s*\([^(]*$/.exec(uptoChar);
+    if (!callMatch) return null;
+    const name = callMatch[1];
+
+    // Conta vírgulas desde o '('
+    const parenIdx = uptoChar.lastIndexOf('(');
+    const activeParameter = parenIdx >= 0 ? (uptoChar.slice(parenIdx + 1).match(/,/g)?.length || 0) : 0;
+
+    // Tenta localizar declaração: função nome( ... ) ou método [mods] tipo nome( ... )
+    const funcDecl = new RegExp(`^\\s*função\\s+${escapeRegex(name)}\\s*\\(([^)]*)\\)`);
+    const methodDecl = new RegExp(`^\\s*(?:publico|privado|protegido)?\\s*(?:estática\\s+)?(?:redefinível\\s+|sobrescreve\\s+|abstrata\\s+)?(?:inteiro|texto|booleano|duplo|flutuante|decimal|vazio)\\s+${escapeRegex(name)}\\s*\\(([^)]*)\\)`);
+
+    let paramsList: string | null = null;
+    for (const l of lines) {
+        let m = funcDecl.exec(l);
+        if (m) { paramsList = m[1]; break; }
+        m = methodDecl.exec(l);
+        if (m) { paramsList = m[1]; break; }
+    }
+    if (paramsList === null) return null;
+
+    const paramsArr = paramsList.split(',').map(s => s.trim()).filter(Boolean);
+    const parameters: ParameterInformation[] = paramsArr.map(p => ({ label: p }));
+    const label = `${name}(${paramsArr.join(', ')})`;
+    const signature: SignatureInformation = {
+        label,
+        parameters
+    };
+    return {
+        signatures: [signature],
+        activeSignature: 0,
+        activeParameter: Math.min(activeParameter, Math.max(0, parameters.length - 1))
+    };
+});
+
+function findEnclosingClass(symbols: DocumentSymbol[], position: Position): DocumentSymbol | null {
+    for (const s of symbols) {
+        if (s.kind === SymbolKind.Class && rangeContains(s.range, position)) {
+            // procurar membro mais interno ou retornar a própria classe
+            if (s.children) {
+                const inner = findEnclosingClass(s.children as DocumentSymbol[], position);
+                return inner || s;
+            }
+            return s;
+        }
+        if (s.children && s.children.length) {
+            const child = findEnclosingClass(s.children as DocumentSymbol[], position);
+            if (child) return child;
+        }
+    }
+    return null;
+}
+
+function rangeContains(range: Range, pos: Position): boolean {
+    if (pos.line < range.start.line || pos.line > range.end.line) return false;
+    if (pos.line === range.start.line && pos.character < range.start.character) return false;
+    if (pos.line === range.end.line && pos.character > range.end.character) return false;
+    return true;
+}
+
+// GO TO DEFINITION (F12)
+connection.onDefinition((params: DefinitionParams): Location | Location[] | null => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return null;
+
+    const pos = params.position;
+    const lineText = document.getText({ start: { line: pos.line, character: 0 }, end: { line: pos.line + 1, character: 0 } });
+    const wordInfo = getWordAtPosition(lineText, pos.character);
+    if (!wordInfo) return null;
+    const word = wordInfo.word;
+
+    const text = document.getText();
+    const lines = text.split('\n');
+
+    // Procurar definições em ordem de prioridade: função, método, classe, interface, enumeração, variável
+    const patterns: { kind: string; regex: RegExp }[] = [
+        // função nome(
+        { kind: 'function', regex: new RegExp(`(^|\\s)função\\s+${escapeRegex(word)}\\s*\\(`) },
+        // método: [mods] tipo nome(
+        { kind: 'method', regex: new RegExp(`(^|\\s)(publico|privado|protegido)?\\s*(estática\\s+)?(redefinível\\s+|sobrescreve\\s+|abstrata\\s+)?(inteiro|texto|booleano|duplo|flutuante|decimal|vazio)\\s+${escapeRegex(word)}\\s*\\(`) },
+        // classe Nome
+        { kind: 'class', regex: new RegExp(`(^|\\s)classe\\s+${escapeRegex(word)}(\\b|\\s|{)`) },
+        // interface Nome
+        { kind: 'interface', regex: new RegExp(`(^|\\s)interface\\s+${escapeRegex(word)}(\\b|\\s|{)`) },
+        // enumeração Nome
+        { kind: 'enum', regex: new RegExp(`(^|\\s)enumeração\\s+${escapeRegex(word)}(\\b|\\s|{)`) },
+        // variável: (tipo|var) nome (=|;|,)
+        { kind: 'variable', regex: new RegExp(`(^|\\s)(inteiro|texto|booleano|duplo|flutuante|decimal|var)\\s+${escapeRegex(word)}(\\s*[=;,)])`) }
+    ];
+
+    for (let i = 0; i < lines.length; i++) {
+        const l = lines[i];
+        for (const p of patterns) {
+            const m = p.regex.exec(l);
+            if (m) {
+                const col = l.indexOf(word);
+                if (col >= 0) {
+                    const location: Location = {
+                        uri: document.uri,
+                        range: {
+                            start: { line: i, character: col },
+                            end: { line: i, character: col + word.length }
+                        }
+                    };
+                    return location;
+                }
+            }
+        }
+    }
+
+    return null;
+});
+
+function escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function getWordAtPosition(line: string, character: number): { word: string; start: number; end: number } | null {
     const wordRegex = /[a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*/g;
     let match;
@@ -904,6 +1099,296 @@ function getWordAtPosition(line: string, character: number): { word: string; sta
     }
 
     return null;
+}
+
+// ------------------------
+// DOCUMENT SYMBOLS (Outline/Breadcrumbs)
+// ------------------------
+connection.onDocumentSymbol((params: DocumentSymbolParams): DocumentSymbol[] => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return [];
+    const text = document.getText();
+    return buildDocumentSymbols(text);
+});
+
+// ------------------------
+// WORKSPACE SYMBOLS (Ir para símbolo)
+// ------------------------
+connection.onWorkspaceSymbol(async (params: WorkspaceSymbolParams): Promise<SymbolInformation[]> => {
+    const query = (params.query || '').toLowerCase();
+    const results: SymbolInformation[] = [];
+
+    // 1) símbolos dos documentos abertos
+    for (const doc of documents.all()) {
+        const symbols = buildDocumentSymbols(doc.getText());
+        results.push(...flattenToSymbolInformation(symbols, doc.uri));
+    }
+
+    // 2) varrer arquivos .pr do workspace (limitado)
+    try {
+        const folders = await connection.workspace.getWorkspaceFolders();
+        if (folders && folders.length) {
+            const uris = folders.map(f => f.uri);
+            const paths = uris.filter(u => u.startsWith('file://')).map(u => uriToFsPath(u));
+            const prFiles = collectPrFiles(paths, 200);
+            for (const filePath of prFiles) {
+                try {
+                    const content = safeReadFile(filePath);
+                    if (!content) continue;
+                    const symbols = buildDocumentSymbols(content);
+                    const fileUri = 'file://' + filePath.replace(/\\/g, '/');
+                    results.push(...flattenToSymbolInformation(symbols, fileUri));
+                } catch { /* ignore */ }
+            }
+        }
+    } catch { /* ignore */ }
+
+    if (!query) return results.slice(0, 500);
+    return results.filter(s => s.name.toLowerCase().includes(query)).slice(0, 500);
+});
+
+function buildDocumentSymbols(text: string): DocumentSymbol[] {
+    const lines = text.split('\n');
+    const lineOffsets = computeLineOffsets(lines);
+    const symbols: DocumentSymbol[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+        if (trimmed.startsWith('//') || !trimmed) continue;
+
+        // espaco Nome { ... }
+        let m = /^\s*espaco\s+([A-Z][\wÀ-ÿ_]*)\s*\{/.exec(line);
+        if (m) {
+            const name = m[1];
+            const startChar = line.indexOf(m[0]);
+            const startOffset = lineOffsets[i] + startChar;
+            const endOffset = findMatchingBrace(text, startOffset + line.indexOf('{', startChar));
+            const range = makeRangeFromOffsets(lineOffsets, startOffset, endOffset);
+            const selRange = makeSelectionRange(line, i, name, line.indexOf(name));
+            const children = parseClassLikeMembers(text, i, endOffset, lineOffsets);
+            symbols.push({ name, kind: SymbolKind.Namespace, range, selectionRange: selRange, children });
+            continue;
+        }
+
+        // classe Nome { ... }
+        m = /^\s*(?:publico|privado|protegido)?\s*(?:abstrata\s+)?classe\s+([A-Z][\wÀ-ÿ_]*)[^\{]*\{/.exec(line);
+        if (m) {
+            const name = m[1];
+            const startChar = line.indexOf(m[0]);
+            const startOffset = lineOffsets[i] + startChar;
+            const endOffset = findMatchingBrace(text, startOffset + line.indexOf('{', startChar));
+            const range = makeRangeFromOffsets(lineOffsets, startOffset, endOffset);
+            const selRange = makeSelectionRange(line, i, name, line.indexOf(name));
+            const children = parseClassLikeMembers(text, i, endOffset, lineOffsets);
+            symbols.push({ name, kind: SymbolKind.Class, range, selectionRange: selRange, children });
+            continue;
+        }
+
+        // interface Nome { ... }
+        m = /^\s*interface\s+([A-Z][\wÀ-ÿ_]*)[^\{]*\{/.exec(line);
+        if (m) {
+            const name = m[1];
+            const startChar = line.indexOf(m[0]);
+            const startOffset = lineOffsets[i] + startChar;
+            const endOffset = findMatchingBrace(text, startOffset + line.indexOf('{', startChar));
+            const range = makeRangeFromOffsets(lineOffsets, startOffset, endOffset);
+            const selRange = makeSelectionRange(line, i, name, line.indexOf(name));
+            const children = parseClassLikeMembers(text, i, endOffset, lineOffsets);
+            symbols.push({ name, kind: SymbolKind.Interface, range, selectionRange: selRange, children });
+            continue;
+        }
+
+        // enumeração Nome { ... }
+        m = /^\s*enumeração\s+([A-Z][\wÀ-ÿ_]*)[^\{]*\{/.exec(line);
+        if (m) {
+            const name = m[1];
+            const startChar = line.indexOf(m[0]);
+            const startOffset = lineOffsets[i] + startChar;
+            const endOffset = findMatchingBrace(text, startOffset + line.indexOf('{', startChar));
+            const range = makeRangeFromOffsets(lineOffsets, startOffset, endOffset);
+            const selRange = makeSelectionRange(line, i, name, line.indexOf(name));
+            symbols.push({ name, kind: SymbolKind.Enum, range, selectionRange: selRange, children: [] });
+            continue;
+        }
+
+        // função nome(...)
+        m = /^\s*função\s+([A-Za-zÀ-ÿ_][\wÀ-ÿ_]*)\s*\(/.exec(line);
+        if (m) {
+            const name = m[1];
+            const nameIdx = line.indexOf(name);
+            const startOffset = lineOffsets[i] + (nameIdx >= 0 ? nameIdx : 0);
+            // tentar achar corpo { ... }
+            const braceIdx = line.indexOf('{');
+            let range;
+            if (braceIdx >= 0) {
+                const endOffset = findMatchingBrace(text, lineOffsets[i] + braceIdx);
+                range = makeRangeFromOffsets(lineOffsets, lineOffsets[i] + braceIdx, endOffset);
+            } else {
+                // sem corpo (talvez assinatura) -> linha inteira
+                range = {
+                    start: { line: i, character: 0 },
+                    end: { line: i, character: line.length }
+                };
+            }
+            const selRange = makeSelectionRange(line, i, name, nameIdx);
+            symbols.push({ name, kind: SymbolKind.Function, range, selectionRange: selRange });
+            continue;
+        }
+
+        // variável top-level: (tipo|var) nome = ... ;
+        m = /^\s*(inteiro|texto|booleano|duplo|flutuante|decimal|var)\s+([A-Za-zÀ-ÿ_][\wÀ-ÿ_]*)\b/.exec(line);
+        if (m) {
+            const name = m[2];
+            const idx = line.indexOf(name);
+            const selRange = makeSelectionRange(line, i, name, idx);
+            const range = { start: { line: i, character: 0 }, end: { line: i, character: line.length } };
+            symbols.push({ name, kind: SymbolKind.Variable, range, selectionRange: selRange });
+            continue;
+        }
+    }
+
+    return symbols;
+}
+
+function parseClassLikeMembers(text: string, startLine: number, blockEndOffset: number, lineOffsets: number[]): DocumentSymbol[] {
+    const symbols: DocumentSymbol[] = [];
+    const startOffset = lineOffsets[startLine];
+    const segment = text.slice(startOffset, blockEndOffset);
+    const segLines = segment.split('\n');
+
+    for (let j = 0; j < segLines.length; j++) {
+        const line = segLines[j];
+        const absLine = startLine + j;
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('//')) continue;
+
+        // método: [mods] tipo nome(
+        let m = /^\s*(?:publico|privado|protegido)?\s*(?:estática\s+)?(?:redefinível\s+|sobrescreve\s+|abstrata\s+)?(inteiro|texto|booleano|duplo|flutuante|decimal|vazio)\s+([A-Za-zÀ-ÿ_][\wÀ-ÿ_]*)\s*\(/.exec(line);
+        if (m) {
+            const name = m[2];
+            const nameIdx = line.indexOf(name);
+            const braceIdx = line.indexOf('{');
+            let range;
+            if (braceIdx >= 0) {
+                const endOffset = findMatchingBrace(text, lineOffsets[absLine] + braceIdx);
+                range = makeRangeFromOffsets(lineOffsets, lineOffsets[absLine] + braceIdx, endOffset);
+            } else {
+                range = { start: { line: absLine, character: 0 }, end: { line: absLine, character: line.length } };
+            }
+            const selRange = makeSelectionRange(line, absLine, name, nameIdx);
+            symbols.push({ name, kind: SymbolKind.Method, range, selectionRange: selRange });
+            continue;
+        }
+
+        // propriedade: [mods] tipo Nome { obter; definir; }
+        m = /^\s*(?:publico|privado|protegido)?\s*(?:estática\s+)?(inteiro|texto|booleano|duplo|flutuante|decimal)\s+([A-Za-zÀ-ÿ_][\wÀ-ÿ_]*)\s*\{\s*(?:obter;)?\s*(?:definir;)?\s*\}/.exec(line);
+        if (m) {
+            const name = m[2];
+            const nameIdx = line.indexOf(name);
+            const selRange = makeSelectionRange(line, absLine, name, nameIdx);
+            const range = { start: { line: absLine, character: 0 }, end: { line: absLine, character: line.length } };
+            symbols.push({ name, kind: SymbolKind.Property, range, selectionRange: selRange });
+            continue;
+        }
+    }
+    return symbols;
+}
+
+function computeLineOffsets(lines: string[]): number[] {
+    const offsets: number[] = [];
+    let acc = 0;
+    for (const l of lines) {
+        offsets.push(acc);
+        acc += l.length + 1; // assume \n
+    }
+    return offsets;
+}
+
+function makeRangeFromOffsets(lineOffsets: number[], startOffset: number, endOffset: number) {
+    const start = offsetToPos(lineOffsets, startOffset);
+    const end = offsetToPos(lineOffsets, Math.max(endOffset, startOffset));
+    return { start, end };
+}
+
+function offsetToPos(lineOffsets: number[], offset: number): Position {
+    // encontrar maior linha com offset <= dado
+    let line = 0;
+    for (let i = 0; i < lineOffsets.length; i++) {
+        if (lineOffsets[i] <= offset) line = i; else break;
+    }
+    const char = offset - lineOffsets[line];
+    return { line, character: char };
+}
+
+function makeSelectionRange(line: string, lineNum: number, name: string, nameIdx: number) {
+    const startChar = Math.max(0, nameIdx);
+    const endChar = startChar + name.length;
+    return { start: { line: lineNum, character: startChar }, end: { line: lineNum, character: endChar } };
+}
+
+function findMatchingBrace(text: string, openBraceOffset: number): number {
+    let depth = 0;
+    for (let i = openBraceOffset; i < text.length; i++) {
+        const ch = text[i];
+        if (ch === '{') depth++;
+        else if (ch === '}') {
+            depth--;
+            if (depth === 0) return i + 1; // posição após '}'
+        }
+    }
+    return openBraceOffset + 1;
+}
+
+function flattenToSymbolInformation(docSymbols: DocumentSymbol[], uri: string, containerName?: string): SymbolInformation[] {
+    const out: SymbolInformation[] = [];
+    for (const s of docSymbols) {
+        out.push({ name: s.name, kind: s.kind as unknown as SymbolKind, location: { uri, range: s.selectionRange }, containerName });
+        if (s.children && s.children.length) {
+            out.push(...flattenToSymbolInformation(s.children, uri, s.name));
+        }
+    }
+    return out;
+}
+
+// Utilitários de workspace
+import * as fs from 'fs';
+import * as path from 'path';
+
+function uriToFsPath(uri: string): string {
+    // file:///C:/x/y -> C:\x\y
+    const without = uri.replace('file:///', '');
+    return without.replace(/\//g, path.sep);
+}
+
+function collectPrFiles(roots: string[], maxFiles: number): string[] {
+    const out: string[] = [];
+    for (const root of roots) {
+        walk(root);
+        if (out.length >= maxFiles) break;
+    }
+    return out.slice(0, maxFiles);
+
+    function walk(dir: string) {
+        let entries: fs.Dirent[];
+        try {
+            entries = fs.readdirSync(dir, { withFileTypes: true });
+        } catch { return; }
+        for (const e of entries) {
+            if (out.length >= maxFiles) return;
+            const p = path.join(dir, e.name);
+            if (e.isDirectory()) {
+                if (e.name === 'node_modules' || e.name.startsWith('.git')) continue;
+                walk(p);
+            } else if (e.isFile() && (p.endsWith('.pr') || p.endsWith('.pds'))) {
+                out.push(p);
+            }
+        }
+    }
+}
+
+function safeReadFile(p: string): string | null {
+    try { return fs.readFileSync(p, 'utf8'); } catch { return null; }
 }
 
 documents.onDidChangeContent((change: TextDocumentChangeEvent<TextDocument>) => {
