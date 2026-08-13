@@ -14,6 +14,7 @@ export function registerDebugAdapter(context: vscode.ExtensionContext) {
 
 class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
     private proc: ChildProcessWithoutNullStreams | undefined;
+    private readonly pendingDebugCommands: string[] = [];
     private readonly onDidSendMessageEmitter = new vscode.EventEmitter<any>();
     onDidSendMessage = this.onDidSendMessageEmitter.event;
 
@@ -37,7 +38,9 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
     private handleRequest(request: any) {
         const { command, arguments: args, seq } = request;
         if (command === 'initialize') {
-            this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { supportsConfigurationDoneRequest: true, supportsStepInRequest: true, supportsContinueRequest: true, supportsPauseRequest: true, supportsFunctionBreakpoints: true } });
+            this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { supportsConfigurationDoneRequest: true, supportsStepInRequest: true, supportsStepOverRequest: true, supportsStepOutRequest: true, supportsContinueRequest: true, supportsPauseRequest: true, supportsFunctionBreakpoints: true } });
+            // Sem este evento o VS Code não conclui a configuração dos breakpoints.
+            this.send({ type: 'event', event: 'initialized' });
         } else if (command === 'launch') {
             const program = args.program as string;
             const interpreterPath = args.interpreterPath as string;
@@ -48,6 +51,8 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
             this.proc.stdout.on('data', data => this.output(data.toString()));
             this.proc.stderr.on('data', data => this.output(data.toString()));
             this.proc.on('exit', _code => this.send({ type: 'event', event: 'terminated' }));
+            for (const pendingCommand of this.pendingDebugCommands) this.proc.stdin.write(pendingCommand);
+            this.pendingDebugCommands.length = 0;
             this.send({ seq, type: 'response', request_seq: seq, success: true, command });
             this.send({ type: 'event', event: 'stopped', body: { reason: 'entry' } });
         } else if (command === 'continue') {
@@ -56,9 +61,19 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
         } else if (command === 'stepIn') {
             this.writeDbg('s\n');
             this.send({ seq, type: 'response', request_seq: seq, success: true, command });
+        } else if (command === 'stepOver') {
+            this.writeDbg('so\n');
+            this.send({ seq, type: 'response', request_seq: seq, success: true, command });
+        } else if (command === 'stepOut') {
+            this.writeDbg('sr\n');
+            this.send({ seq, type: 'response', request_seq: seq, success: true, command });
+        } else if (command === 'pause') {
+            this.writeDbg('p\n');
+            this.send({ seq, type: 'response', request_seq: seq, success: true, command });
         } else if (command === 'setBreakpoints') {
             const src = args.source?.path as string | undefined;
             const reqBps = (args.breakpoints || []) as Array<{ line: number }>;
+            this.output(`[Por Do Sol] Breakpoints recebidos para ${src ?? 'fonte desconhecida'}: ${reqBps.map(bp => bp.line).join(', ') || 'nenhum'}\n`);
             let respBps: Array<{ verified: boolean; line?: number; message?: string }> = [];
             if (!src) {
                 respBps = reqBps.map(_ => ({ verified: false, message: 'Fonte desconhecida' }));
@@ -66,7 +81,54 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
                 return;
             }
 
-            if (src.endsWith('.pbc')) {
+            if (src.endsWith('.pr')) {
+                // Mapear .pr para .pbc correspondente
+                const pbcPath = src.replace(/\.pr$/, '.pbc');
+                
+                // Verificar se o .pbc existe
+                try {
+                    const fs = require('fs');
+                    if (!fs.existsSync(pbcPath)) {
+                        respBps = reqBps.map(bp => ({ verified: false, line: bp.line, message: 'Arquivo .pbc não encontrado. Compile o arquivo .pr primeiro.' }));
+                        this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { breakpoints: respBps } });
+                        return;
+                    }
+                    
+                    // Usar o index do .pbc (similar ao caso .pbc direto)
+                    if (!this.pbcIndex[pbcPath]) {
+                        try { this.pbcIndex[pbcPath] = this.indexPbc(pbcPath); } catch (e: any) { /* ignore */ this.pbcIndex[pbcPath] = []; }
+                    }
+                    const blocks = this.pbcIndex[pbcPath] || [];
+                    
+                    // Construir novo conjunto de BPs desejados
+                    const desired: Array<{ codeId: string; ip: number }> = [];
+                    for (const bp of reqBps) {
+                        const line0 = Math.max(0, (bp.line | 0) - 1);
+                        const blk = blocks.find(b => line0 >= b.startLine && line0 < b.startLine + b.length);
+                        if (!blk) { respBps.push({ verified: false, line: bp.line, message: 'Fora de um bloco de código' }); continue; }
+                        const ip = line0 - blk.startLine;
+                        for (const cid of blk.codeIds) desired.push({ codeId: cid, ip });
+                        respBps.push({ verified: true, line: bp.line });
+                    }
+                    
+                    // Calcular diff com enviados anteriormente
+                    const prev = this.sentBpsBySource.get(pbcPath) || [];
+                    const toKey = (x: { codeId: string; ip: number }) => `${x.codeId}#${x.ip}`;
+                    const prevSet = new Set(prev.map(toKey));
+                    const desiredSet = new Set(desired.map(toKey));
+                    const toAdd = desired.filter(x => !prevSet.has(toKey(x)));
+                    const toDel = prev.filter(x => !desiredSet.has(toKey(x)));
+                    for (const x of toDel) this.writeDbg(`bp del ${x.codeId} ${x.ip}\n`);
+                    for (const x of toAdd) this.writeDbg(`bp add ${x.codeId} ${x.ip}\n`);
+                    this.sentBpsBySource.set(pbcPath, desired);
+                    this.output(`[Por Do Sol] ${desired.length} breakpoint(s) enviado(s) ao interpretador.\n`);
+                    this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { breakpoints: respBps } });
+                    
+                } catch (e) {
+                    respBps = reqBps.map(bp => ({ verified: false, line: bp.line, message: 'Erro ao carregar .pbc' }));
+                    this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { breakpoints: respBps } });
+                }
+            } else if (src.endsWith('.pbc')) {
                 // Garante índice do .pbc
                 if (!this.pbcIndex[src]) {
                     try { this.pbcIndex[src] = this.indexPbc(src); } catch (e: any) { /* ignore */ this.pbcIndex[src] = []; }
@@ -118,10 +180,21 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
         } else if (command === 'threads') {
             this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { threads: [{ id: 1, name: 'main' }] } });
         } else if (command === 'stackTrace') {
+            // Enviar comando stack ao interpretador
+            this.writeDbg('stack\n');
+            
+            // Aguardar resposta (simulado - em produção seria assíncrono)
+            // Por enquanto, retorna stack trace vazio
             this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { stackFrames: [], totalFrames: 0 } });
         } else if (command === 'scopes') {
-            this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { scopes: [] } });
+            // Enviar comando varsjson ao interpretador
+            this.writeDbg('varsjson\n');
+            
+            // Por enquanto, retorna scopes básicos
+            this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { scopes: [{ name: 'Local', variablesReference: 1 }, { name: 'Global', variablesReference: 2 }] } });
         } else if (command === 'variables') {
+            // Parsear resposta JSON do interpretador
+            // Por enquanto, retorna variáveis vazias
             this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { variables: [] } });
         } else {
             this.send({ seq, type: 'response', request_seq: seq, success: true, command });
@@ -133,7 +206,10 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
         this.send({ type: 'event', event: 'output', body: { category: 'stdout', output: text } });
     }
     private writeDbg(cmd: string) {
-        try { this.proc?.stdin.write(cmd); } catch { }
+        try {
+            if (this.proc?.stdin.writable) this.proc.stdin.write(cmd);
+            else this.pendingDebugCommands.push(cmd);
+        } catch { this.pendingDebugCommands.push(cmd); }
     }
 
     // Cria um índice simples do .pbc: para cada bloco DEFINE_* mapeia as linhas de corpo para IPs e codeIds

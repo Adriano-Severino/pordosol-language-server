@@ -18,12 +18,31 @@ import {
     WorkspaceSymbolParams,
     DefinitionParams,
     Location,
+    ReferenceParams,
+    PrepareRenameParams,
+    RenameParams,
+    WorkspaceEdit,
+    TextDocumentEdit,
+    TextEdit,
+    DocumentFormattingParams,
+    Range,
     TextDocumentChangeEvent,
     HoverParams,
     Hover,
     MarkupKind,
     Position,
-    Range
+    CodeActionKind,
+    CodeActionParams,
+    CodeAction,
+    DocumentHighlightParams,
+    DocumentHighlight,
+    DocumentHighlightKind,
+    FoldingRangeParams,
+    FoldingRange,
+    FoldingRangeKind,
+    SemanticTokensParams,
+    SemanticTokens,
+    SemanticTokensBuilder
 } from 'vscode-languageserver/node';
 import {
     SignatureHelpParams,
@@ -33,6 +52,8 @@ import {
 } from 'vscode-languageserver/node';
 
 import { TextDocument } from 'vscode-languageserver-textdocument';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
@@ -40,6 +61,36 @@ const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 let hasConfigurationCapability = false;
 let hasWorkspaceFolderCapability = false;
 let hasDiagnosticRelatedInformationCapability = false;
+
+// Cache de bibliotecas .pbl carregadas
+const libraryCache: Map<string, PblLibrary> = new Map();
+
+interface PblLibrary {
+    path: string;
+    classes: Map<string, PblClass>;
+    functions: Map<string, PblFunction>;
+}
+
+interface PblClass {
+    name: string;
+    fqn: string;
+    methods: Map<string, PblMethod>;
+    properties: Map<string, string>;
+}
+
+interface PblMethod {
+    name: string;
+    returnType: string;
+    parameters: Array<{ name: string; type: string }>;
+    isStatic: boolean;
+    nativeKey?: string;
+}
+
+interface PblFunction {
+    name: string;
+    returnType: string;
+    parameters: Array<{ name: string; type: string }>;
+}
 
 connection.onInitialize((params: InitializeParams) => {
     const capabilities = params.capabilities;
@@ -61,8 +112,28 @@ connection.onInitialize((params: InitializeParams) => {
         capabilities: {
             textDocumentSync: TextDocumentSyncKind.Incremental,
             definitionProvider: true,
-            documentSymbolProvider: true,
+            documentSymbolProvider: false, // Temporariamente desabilitado devido a bug no range
             workspaceSymbolProvider: true,
+            referencesProvider: true,
+            renameProvider: true,
+            documentFormattingProvider: true,
+            documentHighlightProvider: true,
+            foldingRangeProvider: true,
+            codeActionProvider: {
+                codeActionKinds: [CodeActionKind.QuickFix, CodeActionKind.Refactor]
+            },
+            semanticTokensProvider: {
+                legend: {
+                    tokenTypes: [
+                        'namespace', 'type', 'class', 'interface', 'enum', 'typeParameter',
+                        'function', 'method', 'decorator', 'macro', 'variable', 'parameter',
+                        'property', 'enumMember', 'event', 'string', 'number', 'keyword',
+                        'comment', 'operator', 'regexp'
+                    ],
+                    tokenModifiers: ['declaration', 'definition', 'readonly', 'static', 'deprecated', 'abstract', 'async', 'modification', 'documentation', 'defaultLibrary']
+                },
+                full: true
+            },
             diagnosticProvider: {
                 interFileDependencies: false,
                 workspaceDiagnostics: false
@@ -105,13 +176,15 @@ interface PorDoSolSettings {
     enableStrictMode: boolean;
     showWarnings: boolean;
     enableOwnershipAnalysis: boolean;
+    stdlibPaths: string[];
 }
 
 const defaultSettings: PorDoSolSettings = {
     maxNumberOfProblems: 1000,
     enableStrictMode: true,
     showWarnings: true,
-    enableOwnershipAnalysis: true
+    enableOwnershipAnalysis: true,
+    stdlibPaths: []
 };
 let globalSettings: PorDoSolSettings = defaultSettings;
 
@@ -125,6 +198,8 @@ connection.onDidChangeConfiguration(change => {
             (change.settings.pordosolLanguageServer || defaultSettings)
         );
     }
+    // Carregar bibliotecas configuradas
+    loadConfiguredLibraries(globalSettings);
     documents.all().forEach(validateTextDocument);
 });
 
@@ -146,6 +221,138 @@ function getDocumentSettings(resource: string): Promise<PorDoSolSettings> {
 documents.onDidClose(e => {
     documentSettings.delete(e.document.uri);
 });
+
+// Função para carregar bibliotecas .pbl
+function loadPblLibrary(pblPath: string): PblLibrary | null {
+    try {
+        // Verificar se já está no cache
+        if (libraryCache.has(pblPath)) {
+            return libraryCache.get(pblPath)!;
+        }
+
+        // Ler o arquivo .pbl
+        const content = fs.readFileSync(pblPath, 'utf-8');
+        const library: PblLibrary = {
+            path: pblPath,
+            classes: new Map(),
+            functions: new Map()
+        };
+
+        let inManifest = false;
+        const lines = content.split(/\r?\n/);
+
+        for (const line of lines) {
+            const trimmed = line.trim();
+            
+            if (trimmed === '[MANIFESTO]') {
+                inManifest = true;
+                continue;
+            }
+            if (trimmed === '[BYTECODE]' || trimmed === '[PBL]') {
+                inManifest = false;
+                continue;
+            }
+            if (!inManifest || trimmed.startsWith(';') || trimmed.startsWith('#') || trimmed === '') {
+                continue;
+            }
+
+            // Ignorar metadados de cabeçalho
+            if (trimmed.includes('=') && !trimmed.startsWith('DEFINE') && !trimmed.startsWith('PROPERTY') && !trimmed.startsWith('FIELD')) {
+                continue;
+            }
+
+            const parts = trimmed.split(/\s+/);
+            if (parts.length === 0) continue;
+
+            switch (parts[0]) {
+                case 'DEFINE_CLASS': {
+                    const fqn = parts[1];
+                    const name = fqn.split('.').pop() || fqn;
+                    const parent = parts[2] === 'NULO' ? undefined : parts[2];
+                    
+                    library.classes.set(fqn, {
+                        name,
+                        fqn,
+                        methods: new Map(),
+                        properties: new Map()
+                    });
+                    break;
+                }
+                case 'DEFINE_STATIC_CLASS': {
+                    const fqn = parts[1];
+                    const name = fqn.split('.').pop() || fqn;
+                    
+                    library.classes.set(fqn, {
+                        name,
+                        fqn,
+                        methods: new Map(),
+                        properties: new Map()
+                    });
+                    break;
+                }
+                case 'PROPERTY': {
+                    const classFqn = parts[1];
+                    const propName = parts[2];
+                    const propType = parts[3];
+                    
+                    const cls = library.classes.get(classFqn);
+                    if (cls) {
+                        cls.properties.set(propName, propType);
+                    }
+                    break;
+                }
+                case 'DEFINE_METHOD':
+                case 'DEFINE_STATIC_METHOD': {
+                    const classFqn = parts[1];
+                    const methodName = parts[2];
+                    const returnType = parts[3];
+                    const isStatic = parts[0] === 'DEFINE_STATIC_METHOD';
+                    
+                    const cls = library.classes.get(classFqn);
+                    if (cls) {
+                        cls.methods.set(methodName, {
+                            name: methodName,
+                            returnType,
+                            parameters: [],
+                            isStatic
+                        });
+                    }
+                    break;
+                }
+                case 'DEFINE_FUNCTION': {
+                    const funcName = parts[1];
+                    const returnType = parts[2];
+                    
+                    library.functions.set(funcName, {
+                        name: funcName,
+                        returnType,
+                        parameters: []
+                    });
+                    break;
+                }
+            }
+        }
+
+        // Adicionar ao cache
+        libraryCache.set(pblPath, library);
+        connection.console.log(`Por Do Sol: Biblioteca .pbl carregada: ${pblPath}`);
+        return library;
+    } catch (error) {
+        connection.console.error(`Por Do Sol: Erro ao carregar biblioteca .pbl ${pblPath}: ${error}`);
+        return null;
+    }
+}
+
+// Carregar bibliotecas configuradas
+function loadConfiguredLibraries(settings: PorDoSolSettings) {
+    for (const libPath of settings.stdlibPaths) {
+        if (fs.existsSync(libPath)) {
+            loadPblLibrary(libPath);
+        } else {
+            connection.console.warn(`Por Do Sol: Caminho de biblioteca não encontrado: ${libPath}`);
+        }
+    }
+}
 
 // AUTOCOMPLETAR AVANÇADO COM ORIENTAÇÃO A OBJETOS
 connection.onCompletion(
@@ -240,6 +447,186 @@ connection.onCompletion(
             }
         ];
 
+        // Funções da biblioteca padrão - Matemáticas
+        const mathFunctions = [
+            {
+                label: 'abs',
+                kind: CompletionItemKind.Function,
+                insertText: 'abs(${1:valor})',
+                documentation: 'Retorna o valor absoluto de um número inteiro',
+                detail: 'Função matemática - Por Do Sol',
+                data: 50
+            },
+            {
+                label: 'min',
+                kind: CompletionItemKind.Function,
+                insertText: 'min(${1:a}, ${2:b})',
+                documentation: 'Retorna o menor de dois valores inteiros',
+                detail: 'Função matemática - Por Do Sol',
+                data: 51
+            },
+            {
+                label: 'max',
+                kind: CompletionItemKind.Function,
+                insertText: 'max(${1:a}, ${2:b})',
+                documentation: 'Retorna o maior de dois valores inteiros',
+                detail: 'Função matemática - Por Do Sol',
+                data: 52
+            },
+            {
+                label: 'potencia',
+                kind: CompletionItemKind.Function,
+                insertText: 'potencia(${1:base}, ${2:expoente})',
+                documentation: 'Calcula a potência de um número (base^expoente)',
+                detail: 'Função matemática - Por Do Sol',
+                data: 53
+            },
+            {
+                label: 'raiz',
+                kind: CompletionItemKind.Function,
+                insertText: 'raiz(${1:valor})',
+                documentation: 'Calcula a raiz quadrada de um número',
+                detail: 'Função matemática - Por Do Sol',
+                data: 54
+            },
+            {
+                label: 'seno',
+                kind: CompletionItemKind.Function,
+                insertText: 'seno(${1:angulo})',
+                documentation: 'Calcula o seno de um ângulo em radianos',
+                detail: 'Função matemática - Por Do Sol',
+                data: 55
+            },
+            {
+                label: 'cosseno',
+                kind: CompletionItemKind.Function,
+                insertText: 'cosseno(${1:angulo})',
+                documentation: 'Calcula o cosseno de um ângulo em radianos',
+                detail: 'Função matemática - Por Do Sol',
+                data: 56
+            },
+            {
+                label: 'tangente',
+                kind: CompletionItemKind.Function,
+                insertText: 'tangente(${1:angulo})',
+                documentation: 'Calcula a tangente de um ângulo em radianos',
+                detail: 'Função matemática - Por Do Sol',
+                data: 57
+            },
+            {
+                label: 'logaritmo',
+                kind: CompletionItemKind.Function,
+                insertText: 'logaritmo(${1:valor})',
+                documentation: 'Calcula o logaritmo natural de um número',
+                detail: 'Função matemática - Por Do Sol',
+                data: 58
+            },
+            {
+                label: 'arredondar',
+                kind: CompletionItemKind.Function,
+                insertText: 'arredondar(${1:valor})',
+                documentation: 'Arredonda um número para o inteiro mais próximo',
+                detail: 'Função matemática - Por Do Sol',
+                data: 59
+            },
+            {
+                label: 'teto',
+                kind: CompletionItemKind.Function,
+                insertText: 'teto(${1:valor})',
+                documentation: 'Arredonda um número para cima (ceil)',
+                detail: 'Função matemática - Por Do Sol',
+                data: 60
+            },
+            {
+                label: 'piso',
+                kind: CompletionItemKind.Function,
+                insertText: 'piso(${1:valor})',
+                documentation: 'Arredonda um número para baixo (floor)',
+                detail: 'Função matemática - Por Do Sol',
+                data: 61
+            }
+        ];
+
+        // Funções da biblioteca padrão - String
+        const stringFunctions = [
+            {
+                label: 'trecho',
+                kind: CompletionItemKind.Function,
+                insertText: 'trecho(${1:s}, ${2:inicio}, ${3:tamanho})',
+                documentation: 'Extrai parte de uma string',
+                detail: 'Função de string - Por Do Sol',
+                data: 62
+            },
+            {
+                label: 'para_maiusculo',
+                kind: CompletionItemKind.Function,
+                insertText: 'para_maiusculo(${1:s})',
+                documentation: 'Converte uma string para maiúsculas',
+                detail: 'Função de string - Por Do Sol',
+                data: 63
+            },
+            {
+                label: 'para_minusculo',
+                kind: CompletionItemKind.Function,
+                insertText: 'para_minusculo(${1:s})',
+                documentation: 'Converte uma string para minúsculas',
+                detail: 'Função de string - Por Do Sol',
+                data: 64
+            },
+            {
+                label: 'contem',
+                kind: CompletionItemKind.Function,
+                insertText: 'contem(${1:s}, ${2:busca})',
+                documentation: 'Verifica se uma string contém outra substring',
+                detail: 'Função de string - Por Do Sol',
+                data: 65
+            },
+            {
+                label: 'substituir',
+                kind: CompletionItemKind.Function,
+                insertText: 'substituir(${1:s}, ${2:antigo}, ${3:novo})',
+                documentation: 'Substitui ocorrências de uma substring por outra',
+                detail: 'Função de string - Por Do Sol',
+                data: 66
+            },
+            {
+                label: 'dividir',
+                kind: CompletionItemKind.Function,
+                insertText: 'dividir(${1:s}, ${2:delimitador})',
+                documentation: 'Divide uma string em um array usando um delimitador',
+                detail: 'Função de string - Por Do Sol',
+                data: 67
+            },
+            {
+                label: 'remover_espacos',
+                kind: CompletionItemKind.Function,
+                insertText: 'remover_espacos(${1:s})',
+                documentation: 'Remove espaços extras do início e fim da string',
+                detail: 'Função de string - Por Do Sol',
+                data: 68
+            }
+        ];
+
+        // Funções da biblioteca padrão - I/O
+        const ioFunctions = [
+            {
+                label: 'EscreverLinha',
+                kind: CompletionItemKind.Function,
+                insertText: 'EscreverLinha(${1:texto});',
+                documentation: 'Escreve uma linha de texto na saída padrão',
+                detail: 'Função de I/O - Por Do Sol',
+                data: 69
+            },
+            {
+                label: 'LerLinha',
+                kind: CompletionItemKind.Function,
+                insertText: 'texto entrada = LerLinha();',
+                documentation: 'Lê uma linha de texto da entrada padrão',
+                detail: 'Função de I/O - Por Do Sol',
+                data: 70
+            }
+        ];
+
         // Palavras-chave OOP CORRIGIDAS SEM PALAVRA CONSTRUTOR
         const oopKeywords = [
             {
@@ -281,6 +668,82 @@ connection.onCompletion(
                 documentation: 'Declaração de namespace/módulo',
                 detail: 'Namespace - Por Do Sol',
                 data: 20
+            },
+            {
+                label: '@Nativo',
+                kind: CompletionItemKind.Snippet,
+                insertText: '@Nativo("${1:Namespace::Metodo}")',
+                documentation: 'Atributo para marcar métodos que chamam código nativo do runtime',
+                detail: 'Atributo Nativo - Por Do Sol',
+                data: 71
+            }
+        ];
+
+        // Snippets avançados para uso da stdlib
+        const stdlibSnippets = [
+            {
+                label: 'Sistema.Console',
+                kind: CompletionItemKind.Snippet,
+                insertText: 'usando Sistema.Console;\n\nEscreverLinha("${1:mensagem}");',
+                documentation: 'Snippet para usar Sistema.Console e EscreverLinha',
+                detail: 'Sistema.Console - Por Do Sol',
+                data: 72
+            },
+            {
+                label: 'classe Console',
+                kind: CompletionItemKind.Snippet,
+                insertText: 'classe Console {\n\t@Nativo("Console::EscreverLinha")\n\tpublico estatica externo vazio EscreverLinha(texto mensagem);\n\n\t@Nativo("Console::LerLinha")\n\tpublico estatica externo texto LerLinha();\n}',
+                documentation: 'Declaração de classe Console com métodos nativos (sintaxe sistema-padrao)',
+                detail: 'Classe Console - Por Do Sol',
+                data: 73
+            },
+            {
+                label: 'classe Arquivo',
+                kind: CompletionItemKind.Snippet,
+                insertText: 'classe Arquivo {\n\t@Nativo("Arquivo::LerTudo")\n\tpublico texto LerTudo(texto caminho);\n\n\t@Nativo("Arquivo::Escrever")\n\tpublico vazio Escrever(texto caminho, texto conteudo);\n}',
+                documentation: 'Declaração de classe Arquivo com métodos nativos',
+                detail: 'Classe Arquivo - Por Do Sol',
+                data: 74
+            },
+            {
+                label: 'função matemática',
+                kind: CompletionItemKind.Snippet,
+                insertText: 'função ${1:nome}(${2:parametros}) => ${3:tipo} {\n\t${4:// corpo usando funções matemáticas}\n\tretorne ${5:resultado};\n}',
+                documentation: 'Snippet para função matemática usando stdlib',
+                detail: 'Função Matemática - Por Do Sol',
+                data: 75
+            },
+            {
+                label: 'processamento string',
+                kind: CompletionItemKind.Snippet,
+                insertText: 'texto ${1:resultado} = ${2:para_maiusculo|para_minusculo|trecho|contem|substituir|dividir|remover_espacos}(${3:texto});',
+                documentation: 'Snippet para processamento de strings',
+                detail: 'Processamento String - Por Do Sol',
+                data: 76
+            },
+            {
+                label: 'novo array',
+                kind: CompletionItemKind.Snippet,
+                insertText: 'novo ${1:Tipo}[${2:tamanho}]',
+                documentation: 'Cria um novo array com tamanho fixo',
+                detail: 'Array - Por Do Sol',
+                data: 77
+            },
+            {
+                label: 'nova lista',
+                kind: CompletionItemKind.Snippet,
+                insertText: 'novo ${1:Tipo}[]',
+                documentation: 'Cria uma nova lista (array dinâmico)',
+                detail: 'Lista - Por Do Sol',
+                data: 78
+            },
+            {
+                label: 'propriedade com corpo',
+                kind: CompletionItemKind.Snippet,
+                insertText: 'publico ${1:tipo} ${2:Nome} {\n\tobter {\n\t\tretorne ${3:valor};\n\t}\n\tdefinir {\n\t\t${4:campo} = valor;\n\t}\n}',
+                documentation: 'Propriedade com getters e setters',
+                detail: 'Propriedade - Por Do Sol',
+                data: 79
             }
         ];
 
@@ -341,6 +804,22 @@ connection.onCompletion(
                 documentation: 'Define classe ou método abstrato que deve ser implementado por classes derivadas',
                 detail: 'Modificador Abstrato - Por Do Sol',
                 data: 34
+            },
+            {
+                label: 'assíncrono',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'assíncrono ',
+                documentation: 'Modificador para funções assíncronas (async)',
+                detail: 'Modificador Assíncrono - Por Do Sol',
+                data: 37
+            },
+            {
+                label: 'aguarde',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'aguarde ',
+                documentation: 'Palavra-chave await para aguardar resultado de operação assíncrona',
+                detail: 'Await - Por Do Sol',
+                data: 38
             }
         ];
 
@@ -377,6 +856,30 @@ connection.onCompletion(
                 documentation: 'Tipo void para funções que não retornam valor',
                 detail: 'Tipo de dados - Por Do Sol',
                 data: 27
+            },
+            {
+                label: 'objeto',
+                kind: CompletionItemKind.TypeParameter,
+                insertText: 'objeto',
+                documentation: 'Tipo base para objetos não tipados',
+                detail: 'Tipo de dados - Por Do Sol',
+                data: 34
+            },
+            {
+                label: 'nulo',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'nulo',
+                documentation: 'Literal nulo, representa ausência de valor',
+                detail: 'Literal - Por Do Sol',
+                data: 35
+            },
+            {
+                label: 'externo',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'externo',
+                documentation: 'Palavra-chave para métodos externos (sem implementação no Por Do Sol)',
+                detail: 'Modificador - Por Do Sol',
+                data: 36
             },
             {
                 label: 'decimal',
@@ -447,11 +950,15 @@ connection.onCompletion(
 
         // Contexto geral
         if (lineText.trim().length === 0) {
-            completions.push(...keywords, ...oopKeywords, ...types);
+            completions.push(...keywords, ...oopKeywords, ...types, ...mathFunctions, ...stringFunctions, ...ioFunctions);
+            completions.push(...getLibraryCompletions());
+            completions.push(...stdlibSnippets);
         } else if (lineText.includes('=') && !lineText.includes('==')) {
-            completions.push(...values, ...getVariableNames(text));
+            completions.push(...values, ...getVariableNames(text), ...mathFunctions, ...stringFunctions);
         } else {
-            completions.push(...keywords, ...oopKeywords, ...types);
+            completions.push(...keywords, ...oopKeywords, ...types, ...mathFunctions, ...stringFunctions, ...ioFunctions);
+            completions.push(...getLibraryCompletions());
+            completions.push(...stdlibSnippets);
         }
 
         return completions;
@@ -608,11 +1115,469 @@ espaco MeuNamespace
 }
 \`\`\``
             };
+        } else if (item.data === 50) {
+            item.detail = 'Função abs - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Valor absoluto**
+
+Retorna o valor absoluto de um número inteiro.
+
+\`\`\`
+inteiro resultado = abs(-42); // retorna 42
+\`\`\``
+            };
+        } else if (item.data === 51) {
+            item.detail = 'Função min - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Menor valor**
+
+Retorna o menor de dois valores inteiros.
+
+\`\`\`
+inteiro resultado = min(10, 5); // retorna 5
+\`\`\``
+            };
+        } else if (item.data === 52) {
+            item.detail = 'Função max - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Maior valor**
+
+Retorna o maior de dois valores inteiros.
+
+\`\`\`
+inteiro resultado = max(10, 5); // retorna 10
+\`\`\``
+            };
+        } else if (item.data === 53) {
+            item.detail = 'Função potencia - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Potência**
+
+Calcula a potência de um número.
+
+\`\`\`
+duplo resultado = potencia(2, 3); // retorna 8.0
+\`\`\``
+            };
+        } else if (item.data === 54) {
+            item.detail = 'Função raiz - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Raiz quadrada**
+
+Calcula a raiz quadrada de um número.
+
+\`\`\`
+duplo resultado = raiz(16); // retorna 4.0
+\`\`\``
+            };
+        } else if (item.data === 55) {
+            item.detail = 'Função seno - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Seno**
+
+Calcula o seno de um ângulo em radianos.
+
+\`\`\`
+duplo resultado = seno(3.14159 / 2); // retorna aproximadamente 1.0
+\`\`\``
+            };
+        } else if (item.data === 56) {
+            item.detail = 'Função cosseno - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Cosseno**
+
+Calcula o cosseno de um ângulo em radianos.
+
+\`\`\`
+duplo resultado = cosseno(0); // retorna 1.0
+\`\`\``
+            };
+        } else if (item.data === 57) {
+            item.detail = 'Função tangente - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Tangente**
+
+Calcula a tangente de um ângulo em radianos.
+
+\`\`\`
+duplo resultado = tangente(3.14159 / 4); // retorna aproximadamente 1.0
+\`\`\``
+            };
+        } else if (item.data === 58) {
+            item.detail = 'Função logaritmo - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Logaritmo natural**
+
+Calcula o logaritmo natural de um número.
+
+\`\`\`
+duplo resultado = logaritmo(2.71828); // retorna aproximadamente 1.0
+\`\`\``
+            };
+        } else if (item.data === 59) {
+            item.detail = 'Função arredondar - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Arredondar**
+
+Arredonda um número para o inteiro mais próximo.
+
+\`\`\`
+duplo resultado = arredondar(3.7); // retorna 4.0
+\`\`\``
+            };
+        } else if (item.data === 60) {
+            item.detail = 'Função teto - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Teto (Ceil)**
+
+Arredonda um número para cima.
+
+\`\`\`
+duplo resultado = teto(3.2); // retorna 4.0
+\`\`\``
+            };
+        } else if (item.data === 61) {
+            item.detail = 'Função piso - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Piso (Floor)**
+
+Arredonda um número para baixo.
+
+\`\`\`
+duplo resultado = piso(3.8); // retorna 3.0
+\`\`\``
+            };
+        } else if (item.data === 62) {
+            item.detail = 'Função trecho - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Trecho**
+
+Extrai parte de uma string.
+
+\`\`\`
+texto s = "Olá Mundo";
+texto parte = trecho(s, 0, 3); // retorna "Olá"
+\`\`\``
+            };
+        } else if (item.data === 63) {
+            item.detail = 'Função para_maiusculo - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Para maiúsculo**
+
+Converte uma string para maiúsculas.
+
+\`\`\`
+texto s = "olá";
+texto resultado = para_maiusculo(s); // retorna "OLÁ"
+\`\`\``
+            };
+        } else if (item.data === 64) {
+            item.detail = 'Função para_minusculo - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Para minúsculo**
+
+Converte uma string para minúsculas.
+
+\`\`\`
+texto s = "OLÁ";
+texto resultado = para_minusculo(s); // retorna "olá"
+\`\`\``
+            };
+        } else if (item.data === 65) {
+            item.detail = 'Função contem - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Contém**
+
+Verifica se uma string contém outra substring.
+
+\`\`\`
+texto s = "Olá Mundo";
+booleano resultado = contem(s, "Mundo"); // retorna verdadeiro
+\`\`\``
+            };
+        } else if (item.data === 66) {
+            item.detail = 'Função substituir - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Substituir**
+
+Substitui ocorrências de uma substring por outra.
+
+\`\`\`
+texto s = "Olá Mundo";
+texto resultado = substituir(s, "Mundo", "Brasil"); // retorna "Olá Brasil"
+\`\`\``
+            };
+        } else if (item.data === 67) {
+            item.detail = 'Função dividir - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Dividir**
+
+Divide uma string em um array usando um delimitador.
+
+\`\`\`
+texto s = "a,b,c";
+// retorna array ["a", "b", "c"]
+\`\`\``
+            };
+        } else if (item.data === 68) {
+            item.detail = 'Função remover_espacos - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Remover espaços**
+
+Remove espaços extras do início e fim da string.
+
+\`\`\`
+texto s = "  Olá  ";
+texto resultado = remover_espacos(s); // retorna "Olá"
+\`\`\``
+            };
+        } else if (item.data === 69) {
+            item.detail = 'Função EscreverLinha - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Escrever linha**
+
+Escreve uma linha de texto na saída padrão.
+
+\`\`\`
+EscreverLinha("Olá, Mundo!");
+\`\`\``
+            };
+        } else if (item.data === 70) {
+            item.detail = 'Função LerLinha - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Ler linha**
+
+Lê uma linha de texto da entrada padrão.
+
+\`\`\`
+texto entrada = LerLinha();
+\`\`\``
+            };
+        } else if (item.data === 71) {
+            item.detail = 'Atributo @Nativo - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Atributo @Nativo**
+
+Marca métodos que chamam código nativo do runtime.
+
+\`\`\`
+@Nativo("Sistema::Console::EscreverLinha")
+publico vazio EscreverLinha(texto mensagem);
+\`\`\`
+
+Use este atributo para métodos que são implementados em Rust no runtime.`
+            };
+        } else if (item.data === 72) {
+            item.detail = 'Sistema.Console - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Sistema.Console**
+
+Snippet para usar Sistema.Console e EscreverLinha.
+
+\`\`\`
+usando Sistema.Console;
+
+EscreverLinha("Olá, Mundo!");
+\`\`\``
+            };
+        } else if (item.data === 73) {
+            item.detail = 'Classe Console - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Classe Console**
+
+Declaração de classe Console com métodos nativos.
+
+\`\`\`
+classe Console {
+    @Nativo("Console::EscreverLinha")
+    publico estatica vazio EscreverLinha(texto mensagem);
+
+    @Nativo("Console::LerLinha")
+    publico estatica texto LerLinha();
+}
+\`\`\``
+            };
+        } else if (item.data === 74) {
+            item.detail = 'Classe Arquivo - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Classe Arquivo**
+
+Declaração de classe Arquivo com métodos nativos.
+
+\`\`\`
+classe Arquivo {
+    @Nativo("Arquivo::LerTudo")
+    publico texto LerTudo(texto caminho);
+
+    @Nativo("Arquivo::Escrever")
+    publico vazio Escrever(texto caminho, texto conteudo);
+}
+\`\`\``
+            };
+        } else if (item.data === 75) {
+            item.detail = 'Função Matemática - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Função Matemática**
+
+Snippet para função matemática usando stdlib.
+
+\`\`\`
+função calcularArea(raio) => duplo {
+    duplo area = 3.14159 * potencia(raio, 2);
+    retorne area;
+}
+\`\`\``
+            };
+        } else if (item.data === 76) {
+            item.detail = 'Processamento String - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Processamento String**
+
+Snippet para processamento de strings.
+
+\`\`\`
+texto resultado = para_maiusculo(texto);
+texto parte = trecho(texto, 0, 5);
+booleano contem = contem(texto, "busca");
+\`\`\``
+            };
+        } else if (item.data === 77) {
+            item.detail = 'Array - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Novo Array**
+
+Cria um novo array com tamanho fixo.
+
+\`\`\`
+inteiro[] numeros = novo inteiro[10];
+texto[] nomes = novo texto[5];
+\`\`\``
+            };
+        } else if (item.data === 78) {
+            item.detail = 'Lista - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Nova Lista**
+
+Cria uma nova lista (array dinâmico).
+
+\`\`\`
+Lista<inteiro> numeros = novo inteiro[];
+Lista<texto> nomes = novo texto[];
+\`\`\``
+            };
+        } else if (item.data === 79) {
+            item.detail = 'Propriedade - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Propriedade com Corpo**
+
+Propriedade com getters e setters.
+
+\`\`\`
+publico inteiro Idade {
+    obter {
+        retorne _idade;
+    }
+    definir {
+        _idade = valor;
+    }
+}
+\`\`\``
+            };
+        } else if (item.data === 80) {
+            item.detail = 'Atributo @Nativo - Por Do Sol';
+            item.documentation = {
+                kind: MarkupKind.Markdown,
+                value: `**Atributo @Nativo**
+
+Marca métodos que chamam código nativo do runtime (sintaxe usada na biblioteca padrão sistema-padrao).
+
+\`\`\`
+@Nativo("Console::EscreverLinha")
+publico estatica externo vazio EscreverLinha(texto mensagem);
+\`\`\`
+
+Use esta sintaxe nos arquivos da biblioteca padrão.`
+            };
         }
 
         return item;
     }
 );
+
+// Função para obter completions de bibliotecas carregadas
+function getLibraryCompletions(): CompletionItem[] {
+    const completions: CompletionItem[] = [];
+    
+    for (const [path, library] of libraryCache) {
+        // Adicionar classes
+        for (const [fqn, cls] of library.classes) {
+            completions.push({
+                label: cls.name,
+                kind: CompletionItemKind.Class,
+                insertText: cls.name,
+                documentation: `Classe da biblioteca: ${fqn}`,
+                detail: `Biblioteca: ${path}`,
+                data: 80
+            });
+            
+            // Adicionar métodos da classe
+            for (const [methodName, method] of cls.methods) {
+                completions.push({
+                    label: `${cls.name}.${methodName}`,
+                    kind: CompletionItemKind.Method,
+                    insertText: `${cls.name}.${methodName}($1)`,
+                    documentation: `Método ${method.returnType} ${methodName}`,
+                    detail: `Classe: ${fqn}`,
+                    data: 81
+                });
+            }
+        }
+        
+        // Adicionar funções globais
+        for (const [funcName, func] of library.functions) {
+            completions.push({
+                label: funcName,
+                kind: CompletionItemKind.Function,
+                insertText: `${funcName}($1)`,
+                documentation: `Função ${func.returnType} ${funcName}`,
+                detail: `Biblioteca: ${path}`,
+                data: 82
+            });
+        }
+    }
+    
+    return completions;
+}
 
 // Funções auxiliares expandidas
 function getVariableNames(text: string): CompletionItem[] {
@@ -823,6 +1788,108 @@ async function computeDiagnostics(textDocument: TextDocument): Promise<Diagnosti
             }
         }
 
+        // Validação do atributo @Nativo (sintaxe atual do compilador)
+        if (trimmed.includes('@Nativo')) {
+            const arrobaRegex = /@Nativo\("([^"]+)"\)/;
+            const arrobaMatch = trimmed.match(arrobaRegex);
+            
+            if (!arrobaMatch) {
+                diagnostics.push({
+                    severity: DiagnosticSeverity.Error,
+                    range: {
+                        start: { line: index, character: trimmed.indexOf('@Nativo') },
+                        end: { line: index, character: line.length }
+                    },
+                    message: 'Sintaxe do atributo Nativo incorreta - use @Nativo("Namespace::Metodo")',
+                    source: 'Por Do Sol Language Server',
+                    code: 'malformed-nativo-attribute'
+                });
+            }
+        }
+
+        // Validação de chamadas de funções da stdlib
+        const stdlibFunctions = [
+            { name: 'abs', params: 1 },
+            { name: 'min', params: 2 },
+            { name: 'max', params: 2 },
+            { name: 'potencia', params: 2 },
+            { name: 'raiz', params: 1 },
+            { name: 'seno', params: 1 },
+            { name: 'cosseno', params: 1 },
+            { name: 'tangente', params: 1 },
+            { name: 'logaritmo', params: 1 },
+            { name: 'arredondar', params: 1 },
+            { name: 'teto', params: 1 },
+            { name: 'piso', params: 1 },
+            { name: 'trecho', params: 3 },
+            { name: 'para_maiusculo', params: 1 },
+            { name: 'para_minusculo', params: 1 },
+            { name: 'contem', params: 2 },
+            { name: 'substituir', params: 3 },
+            { name: 'dividir', params: 2 },
+            { name: 'remover_espacos', params: 1 },
+            { name: 'EscreverLinha', params: 1 },
+            { name: 'LerLinha', params: 0 }
+        ];
+
+        for (const func of stdlibFunctions) {
+            const funcCallRegex = new RegExp(`\\b${func.name}\\s*\\(`);
+            if (funcCallRegex.test(trimmed)) {
+                // Contar argumentos
+                const match = trimmed.match(new RegExp(`\\b${func.name}\\s*\\(([^)]*)\\)`));
+                if (match) {
+                    const args = match[1].split(',').filter(a => a.trim().length > 0);
+                    if (args.length !== func.params) {
+                        diagnostics.push({
+                            severity: DiagnosticSeverity.Warning,
+                            range: {
+                                start: { line: index, character: trimmed.indexOf(func.name) },
+                                end: { line: index, character: trimmed.indexOf(func.name) + func.name.length }
+                            },
+                            message: `A função ${func.name} espera ${func.params} parâmetro(s), mas recebeu ${args.length}`,
+                            source: 'Por Do Sol Language Server',
+                            code: 'wrong-argument-count'
+                        });
+                    }
+                }
+            }
+        }
+
+        // Sugestão de imports para classes de bibliotecas
+        const usedClasses = trimmed.match(/\b[A-Z]\w+\b/g);
+        if (usedClasses) {
+            for (const className of usedClasses) {
+                // Verificar se a classe existe em alguma biblioteca carregada
+                let foundInLibrary = false;
+                for (const [, library] of libraryCache) {
+                    for (const [, cls] of library.classes) {
+                        if (cls.name === className) {
+                            foundInLibrary = true;
+                            break;
+                        }
+                    }
+                    if (foundInLibrary) break;
+                }
+
+                if (foundInLibrary) {
+                    // Verificar se já tem import
+                    const hasImport = text.includes(`usando ${className}`) || text.includes(`usando *`);
+                    if (!hasImport) {
+                        diagnostics.push({
+                            severity: DiagnosticSeverity.Information,
+                            range: {
+                                start: { line: index, character: trimmed.indexOf(className) },
+                                end: { line: index, character: trimmed.indexOf(className) + className.length }
+                            },
+                            message: `Considere adicionar "usando ${className};" para importar a classe`,
+                            source: 'Por Do Sol Language Server',
+                            code: 'missing-import'
+                        });
+                    }
+                }
+            }
+        }
+
         // Validação de classes
         if (trimmed.includes('classe ') && !trimmed.match(/classe\s+[A-Z]\w*\s*{?/)) {
             diagnostics.push({
@@ -849,6 +1916,59 @@ async function computeDiagnostics(textDocument: TextDocument): Promise<Diagnosti
                 source: 'Por Do Sol Language Server',
                 code: 'invalid-constructor-keyword'
             });
+        }
+
+        // Validação para detectar implementação incompleta de interface
+        if (trimmed.includes(': ') && trimmed.includes('interface') === false) {
+            const classMatch = trimmed.match(/classe\s+(\w+)\s*:\s*(\w+)/);
+            if (classMatch) {
+                const className = classMatch[1];
+                const interfaceName = classMatch[2];
+                
+                // Buscar interface em bibliotecas
+                let interfaceMethods: string[] = [];
+                for (const [, library] of libraryCache) {
+                    for (const [fqn, cls] of library.classes) {
+                        if (cls.name === interfaceName) {
+                            // Assumir que métodos da interface estão em cls.methods
+                            interfaceMethods = Array.from(cls.methods.keys());
+                            break;
+                        }
+                    }
+                }
+                
+                if (interfaceMethods.length > 0) {
+                    // Verificar se os métodos estão implementados na classe
+                    const classStart = index;
+                    let classEnd = classStart;
+                    let braceCount = 0;
+                    
+                    for (let i = classStart; i < lines.length; i++) {
+                        if (lines[i].includes('{')) braceCount++;
+                        if (lines[i].includes('}')) braceCount--;
+                        if (braceCount === 0) {
+                            classEnd = i;
+                            break;
+                        }
+                    }
+                    
+                    const classBody = lines.slice(classStart, classEnd).join('\n');
+                    const missingMethods = interfaceMethods.filter(method => !classBody.includes(method));
+                    
+                    if (missingMethods.length > 0) {
+                        diagnostics.push({
+                            severity: DiagnosticSeverity.Error,
+                            range: {
+                                start: { line: index, character: 0 },
+                                end: { line: index, character: line.length }
+                            },
+                            message: `Classe ${className} não implementa métodos da interface ${interfaceName}: ${missingMethods.join(', ')}`,
+                            source: 'Por Do Sol Language Server',
+                            code: 'missing-interface-members'
+                        });
+                    }
+                }
+            }
         }
     });
 
@@ -1024,8 +2144,96 @@ function rangeContains(range: Range, pos: Position): boolean {
     return true;
 }
 
-// GO TO DEFINITION (F12)
-connection.onDefinition((params: DefinitionParams): Location | Location[] | null => {
+// GO TO DEFINITION (F12) - Melhorado com cross-file navigation
+interface SymbolInfo {
+    name: string;
+    kind: string;
+    uri: string;
+    line: number;
+    column: number;
+}
+
+// Cache de símbolos do workspace
+const workspaceSymbols: Map<string, SymbolInfo[]> = new Map();
+
+// Função para analisar um documento e extrair símbolos
+function extractSymbolsFromDocument(document: TextDocument): SymbolInfo[] {
+    const text = document.getText();
+    const lines = text.split('\n');
+    const symbols: SymbolInfo[] = [];
+
+    const patterns: { kind: string; regex: RegExp }[] = [
+        // função nome(
+        { kind: 'function', regex: /(^|\s)função\s+([a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*)\s*\(/ },
+        // método: [mods] tipo nome(
+        { kind: 'method', regex: /(^|\s)(publico|privado|protegido)?\s*(estática\s+)?(redefinível\s+|sobrescreves\s+|abstrata\s+)?(inteiro|texto|booleano|duplo|flutuante|decimal|vazio)\s+([a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*)\s*\(/ },
+        // classe Nome
+        { kind: 'class', regex: /(^|\s)classe\s+([a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*)(\b|\s|{)/ },
+        // interface Nome
+        { kind: 'interface', regex: /(^|\s)interface\s+([a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*)(\b|\s|{)/ },
+        // enumeração Nome
+        { kind: 'enum', regex: /(^|\s)enumeração\s+([a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*)(\b|\s|{)/ },
+        // construtor
+        { kind: 'constructor', regex: /(^|\s)construtor\s*\(/ },
+        // variável: (tipo|var) nome (=|;|,)
+        { kind: 'variable', regex: /(^|\s)(inteiro|texto|booleano|duplo|flutuante|decimal|var)\s+([a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*)(\s*[=;,)])/ }
+    ];
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        for (const p of patterns) {
+            const match = p.regex.exec(line);
+            if (match) {
+                // Capturar o nome do símbolo (grupo 2 para maioria dos patterns)
+                const name = match[2] || match[1];
+                if (name) {
+                    const col = line.indexOf(name);
+                    if (col >= 0) {
+                        symbols.push({
+                            name,
+                            kind: p.kind,
+                            uri: document.uri,
+                            line: i,
+                            column: col
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    return symbols;
+}
+
+// Atualizar cache de símbolos quando documento muda
+documents.onDidChangeContent(change => {
+    const symbols = extractSymbolsFromDocument(change.document);
+    workspaceSymbols.set(change.document.uri, symbols);
+});
+
+documents.onDidOpen(e => {
+    const symbols = extractSymbolsFromDocument(e.document);
+    workspaceSymbols.set(e.document.uri, symbols);
+});
+
+documents.onDidClose(e => {
+    workspaceSymbols.delete(e.document.uri);
+});
+
+// Carregar símbolos de todos os documentos iniciais
+async function loadWorkspaceSymbols() {
+    for (const doc of documents.all()) {
+        const symbols = extractSymbolsFromDocument(doc);
+        workspaceSymbols.set(doc.uri, symbols);
+    }
+}
+
+// Chamar na inicialização
+connection.onInitialized(() => {
+    loadWorkspaceSymbols();
+});
+
+connection.onDefinition(async (params: DefinitionParams): Promise<Location | Location[] | null> => {
     const document = documents.get(params.textDocument.uri);
     if (!document) return null;
 
@@ -1035,46 +2243,634 @@ connection.onDefinition((params: DefinitionParams): Location | Location[] | null
     if (!wordInfo) return null;
     const word = wordInfo.word;
 
+    // Primeiro, buscar no documento atual
+    const currentSymbols = workspaceSymbols.get(document.uri) || [];
+    const currentMatch = currentSymbols.find(s => s.name === word);
+    if (currentMatch) {
+        return {
+            uri: currentMatch.uri,
+            range: {
+                start: { line: currentMatch.line, character: currentMatch.column },
+                end: { line: currentMatch.line, character: currentMatch.column + word.length }
+            }
+        };
+    }
+
+    // Se não encontrou no documento atual, buscar em outros documentos
+    const allMatches: Location[] = [];
+    for (const [uri, symbols] of workspaceSymbols) {
+        if (uri === document.uri) continue; // Já verificado
+        const match = symbols.find(s => s.name === word);
+        if (match) {
+            allMatches.push({
+                uri: match.uri,
+                range: {
+                    start: { line: match.line, character: match.column },
+                    end: { line: match.line, character: match.column + word.length }
+                }
+            });
+        }
+    }
+
+    // Se encontrou em outros documentos, retornar todos
+    if (allMatches.length > 0) {
+        return allMatches;
+    }
+
+    // Buscar em bibliotecas .pbl
+    for (const [path, library] of libraryCache) {
+        // Buscar classes
+        for (const [fqn, cls] of library.classes) {
+            if (cls.name === word) {
+                // Não é possível navegar para arquivo .pbl, mas podemos informar
+                connection.window.showInformationMessage(`Definição encontrada na biblioteca: ${path} (${fqn})`);
+                return null;
+            }
+            // Buscar métodos
+            const method = cls.methods.get(word);
+            if (method) {
+                connection.window.showInformationMessage(`Definição encontrada na biblioteca: ${path} (${fqn}.${word})`);
+                return null;
+            }
+        }
+        // Buscar funções globais
+        const func = library.functions.get(word);
+        if (func) {
+            connection.window.showInformationMessage(`Definição encontrada na biblioteca: ${path} (${word})`);
+            return null;
+        }
+    }
+
+    return null;
+});
+
+// FIND REFERENCES (Shift+F12)
+connection.onReferences(async (params: ReferenceParams): Promise<Location[]> => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return [];
+
+    const pos = params.position;
+    const lineText = document.getText({ start: { line: pos.line, character: 0 }, end: { line: pos.line + 1, character: 0 } });
+    const wordInfo = getWordAtPosition(lineText, pos.character);
+    if (!wordInfo) return [];
+    const word = wordInfo.word;
+
+    const references: Location[] = [];
+
+    // Buscar referências em todos os documentos do workspace
+    for (const [uri, symbols] of workspaceSymbols) {
+        const doc = documents.get(uri);
+        if (!doc) continue;
+
+        const text = doc.getText();
+        const lines = text.split('\n');
+
+        // Buscar todas as ocorrências da palavra no documento
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const regex = new RegExp(`\\b${escapeRegex(word)}\\b`, 'g');
+            let match;
+            while ((match = regex.exec(line)) !== null) {
+                // Adicionar referência
+                references.push({
+                    uri: uri,
+                    range: {
+                        start: { line: i, character: match.index },
+                        end: { line: i, character: match.index + word.length }
+                    }
+                });
+            }
+        }
+    }
+
+    return references;
+});
+
+// DOCUMENT HIGHLIGHTS (Ctrl+Shift+F12 / highlight on selection)
+connection.onDocumentHighlight(async (params: DocumentHighlightParams): Promise<DocumentHighlight[] | null> => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return null;
+
+    const pos = params.position;
+    const lineText = document.getText({ start: { line: pos.line, character: 0 }, end: { line: pos.line + 1, character: 0 } });
+    const wordInfo = getWordAtPosition(lineText, pos.character);
+    if (!wordInfo) return null;
+    const word = wordInfo.word;
+
+    const highlights: DocumentHighlight[] = [];
+
+    // Buscar ocorrências no documento atual
     const text = document.getText();
     const lines = text.split('\n');
 
-    // Procurar definições em ordem de prioridade: função, método, classe, interface, enumeração, variável
-    const patterns: { kind: string; regex: RegExp }[] = [
-        // função nome(
-        { kind: 'function', regex: new RegExp(`(^|\\s)função\\s+${escapeRegex(word)}\\s*\\(`) },
-        // método: [mods] tipo nome(
-        { kind: 'method', regex: new RegExp(`(^|\\s)(publico|privado|protegido)?\\s*(estática\\s+)?(redefinível\\s+|sobrescreve\\s+|abstrata\\s+)?(inteiro|texto|booleano|duplo|flutuante|decimal|vazio)\\s+${escapeRegex(word)}\\s*\\(`) },
-        // classe Nome
-        { kind: 'class', regex: new RegExp(`(^|\\s)classe\\s+${escapeRegex(word)}(\\b|\\s|{)`) },
-        // interface Nome
-        { kind: 'interface', regex: new RegExp(`(^|\\s)interface\\s+${escapeRegex(word)}(\\b|\\s|{)`) },
-        // enumeração Nome
-        { kind: 'enum', regex: new RegExp(`(^|\\s)enumeração\\s+${escapeRegex(word)}(\\b|\\s|{)`) },
-        // variável: (tipo|var) nome (=|;|,)
-        { kind: 'variable', regex: new RegExp(`(^|\\s)(inteiro|texto|booleano|duplo|flutuante|decimal|var)\\s+${escapeRegex(word)}(\\s*[=;,)])`) }
-    ];
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const regex = new RegExp(`\\b${escapeRegex(word)}\\b`, 'g');
+        let match;
+        while ((match = regex.exec(line)) !== null) {
+            highlights.push({
+                range: {
+                    start: { line: i, character: match.index },
+                    end: { line: i, character: match.index + word.length }
+                },
+                kind: DocumentHighlightKind.Read
+            });
+        }
+    }
+
+    return highlights;
+});
+
+// FOLDING RANGES
+connection.onFoldingRanges(async (params: FoldingRangeParams): Promise<FoldingRange[] | null> => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return null;
+
+    const text = document.getText();
+    const lines = text.split('\n');
+    const foldingRanges: FoldingRange[] = [];
+
+    let braceStack: Array<{ line: number; type: string }> = [];
 
     for (let i = 0; i < lines.length; i++) {
-        const l = lines[i];
-        for (const p of patterns) {
-            const m = p.regex.exec(l);
-            if (m) {
-                const col = l.indexOf(word);
-                if (col >= 0) {
-                    const location: Location = {
-                        uri: document.uri,
+        const line = lines[i];
+        const trimmed = line.trim();
+
+        // Detectar abertura de bloco {
+        const openBrace = line.indexOf('{');
+        if (openBrace >= 0) {
+            braceStack.push({ line: i, type: 'brace' });
+        }
+
+        // Detectar fechamento de bloco }
+        const closeBrace = line.indexOf('}');
+        if (closeBrace >= 0 && braceStack.length > 0) {
+            const lastOpen = braceStack.pop();
+            if (lastOpen) {
+                foldingRanges.push({
+                    startLine: lastOpen.line,
+                    endLine: i,
+                    kind: FoldingRangeKind.Region
+                });
+            }
+        }
+
+        // Detectar comentários de bloco /* */
+        const commentStart = line.indexOf('/*');
+        const commentEnd = line.indexOf('*/');
+        if (commentStart >= 0 && commentEnd < 0) {
+            braceStack.push({ line: i, type: 'comment' });
+        } else if (commentEnd >= 0 && commentStart < 0 && braceStack.length > 0) {
+            const lastOpen = braceStack.pop();
+            if (lastOpen && lastOpen.type === 'comment') {
+                foldingRanges.push({
+                    startLine: lastOpen.line,
+                    endLine: i,
+                    kind: FoldingRangeKind.Comment
+                });
+            }
+        }
+    }
+
+    return foldingRanges;
+});
+
+// CODE ACTIONS (Quick Fixes)
+connection.onCodeAction(async (params: CodeActionParams): Promise<CodeAction[] | null> => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return null;
+
+    const text = document.getText();
+    const lines = text.split('\n');
+    const diagnostics = params.context.diagnostics;
+    const codeActions: CodeAction[] = [];
+
+    for (const diagnostic of diagnostics) {
+        const code = diagnostic.code as string;
+
+        // Quick fix: Adicionar ponto e vírgula
+        if (code === 'missing-semicolon') {
+            const line = lines[diagnostic.range.start.line];
+            const edit = TextDocumentEdit.create(
+                { uri: document.uri, version: document.version },
+                [
+                    {
                         range: {
-                            start: { line: i, character: col },
-                            end: { line: i, character: col + word.length }
+                            start: { line: diagnostic.range.start.line, character: line.length },
+                            end: { line: diagnostic.range.start.line, character: line.length }
+                        },
+                        newText: ';'
+                    }
+                ]
+            );
+
+            codeActions.push({
+                title: 'Adicionar ponto e vírgula (;)',
+                kind: CodeActionKind.QuickFix,
+                edit: { documentChanges: [edit] },
+                diagnostics: [diagnostic]
+            });
+        }
+
+        // Quick fix: Corrigir atributo Nativo
+        if (code === 'malformed-nativo-attribute') {
+            const line = lines[diagnostic.range.start.line];
+            const colchetesMatch = line.match(/\[Nativo\("([^"]+)"\)\]/);
+            
+            if (colchetesMatch) {
+                const namespace = colchetesMatch[1];
+                const newText = `@Nativo("${namespace}")`;
+                const edit = TextDocumentEdit.create(
+                    { uri: document.uri, version: document.version },
+                    [
+                        {
+                            range: diagnostic.range,
+                            newText: newText
                         }
-                    };
-                    return location;
+                    ]
+                );
+
+                codeActions.push({
+                    title: 'Converter para @Nativo (sintaxe atual)',
+                    kind: CodeActionKind.QuickFix,
+                    edit: { documentChanges: [edit] },
+                    diagnostics: [diagnostic]
+                });
+            }
+        }
+
+        // Quick fix: Corriger interpolação de string
+        if (code === 'malformed-interpolation') {
+            const line = lines[diagnostic.range.start.line];
+            const match = line.match(/\$"[^"]*\{([^}]*)\}[^"]*"/);
+            
+            if (match) {
+                const newText = `$"${match[1]}"`;
+                const edit = TextDocumentEdit.create(
+                    { uri: document.uri, version: document.version },
+                    [
+                        {
+                            range: diagnostic.range,
+                            newText: newText
+                        }
+                    ]
+                );
+
+                codeActions.push({
+                    title: 'Corrigir interpolação de string',
+                    kind: CodeActionKind.QuickFix,
+                    edit: { documentChanges: [edit] },
+                    diagnostics: [diagnostic]
+                });
+            }
+        }
+
+        // Quick fix: Adicionar import faltante
+        if (code === 'missing-import') {
+            const line = lines[diagnostic.range.start.line];
+            const wordMatch = line.match(/\b([A-Z]\w+)\b/g);
+            if (wordMatch) {
+                for (const word of wordMatch) {
+                    // Buscar em bibliotecas .pbl
+                    for (const [path, library] of libraryCache) {
+                        for (const [fqn, cls] of library.classes) {
+                            if (cls.name === word) {
+                                const namespace = fqn.split('.').slice(0, -1).join('.');
+                                const importLine = `usando ${namespace};\n`;
+                                
+                                // Encontrar linha onde adicionar o import (após usings existentes ou no topo)
+                                let insertLine = 0;
+                                for (let i = 0; i < lines.length; i++) {
+                                    if (lines[i].trim().startsWith('usando')) {
+                                        insertLine = i + 1;
+                                    } else if (lines[i].trim() && !lines[i].trim().startsWith('usando')) {
+                                        break;
+                                    }
+                                }
+                                
+                                const edit = TextDocumentEdit.create(
+                                    { uri: document.uri, version: document.version },
+                                    [
+                                        {
+                                            range: {
+                                                start: { line: insertLine, character: 0 },
+                                                end: { line: insertLine, character: 0 }
+                                            },
+                                            newText: importLine
+                                        }
+                                    ]
+                                );
+
+                                codeActions.push({
+                                    title: `Adicionar import: usando ${namespace};`,
+                                    kind: CodeActionKind.QuickFix,
+                                    edit: { documentChanges: [edit] },
+                                    diagnostics: [diagnostic]
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Quick fix: Implementar métodos de interface
+        if (code === 'missing-interface-members') {
+            const line = lines[diagnostic.range.start.line];
+            const classMatch = line.match(/classe\s+(\w+)\s*:\s*(\w+)/);
+            if (classMatch) {
+                const className = classMatch[1];
+                const interfaceName = classMatch[2];
+                
+                // Buscar métodos da interface
+                let interfaceMethods: string[] = [];
+                for (const [, library] of libraryCache) {
+                    for (const [fqn, cls] of library.classes) {
+                        if (cls.name === interfaceName) {
+                            interfaceMethods = Array.from(cls.methods.keys());
+                            break;
+                        }
+                    }
+                }
+                
+                if (interfaceMethods.length > 0) {
+                    // Encontrar o final da classe (último })
+                    let insertLine = lines.length - 1;
+                    for (let i = diagnostic.range.start.line; i < lines.length; i++) {
+                        if (lines[i].includes('}')) {
+                            insertLine = i;
+                            break;
+                        }
+                    }
+                    
+                    // Gerar stubs
+                    const stubs = interfaceMethods.map(method => {
+                        return `\n\tpublico vazio ${method}() {\n\t\t// TODO: implementar\n\t}`;
+                    }).join('\n');
+                    
+                    const edit = TextDocumentEdit.create(
+                        { uri: document.uri, version: document.version },
+                        [
+                            {
+                                range: {
+                                    start: { line: insertLine, character: 0 },
+                                    end: { line: insertLine, character: 0 }
+                                },
+                                newText: stubs
+                            }
+                        ]
+                    );
+
+                    codeActions.push({
+                        title: `Implementar métodos da interface ${interfaceName}`,
+                        kind: CodeActionKind.QuickFix,
+                        edit: { documentChanges: [edit] },
+                        diagnostics: [diagnostic]
+                    });
                 }
             }
         }
     }
 
+    return codeActions;
+});
+
+// INLAY HINTS - desabilitado por incompatibilidade de versão da biblioteca
+// Requer vscode-languageserver mais recente
+
+// SEMANTIC TOKENS
+connection.languages.semanticTokens.on(async (params: SemanticTokensParams): Promise<SemanticTokens> => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return { data: [] };
+
+    const text = document.getText();
+    const lines = text.split('\n');
+    const builder = new SemanticTokensBuilder();
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const trimmed = line.trim();
+
+        // Detectar tipos
+        const typeRegex = /\b(inteiro|texto|booleano|duplo|flutuante|decimal|objeto|vazio)\b/g;
+        let match;
+        while ((match = typeRegex.exec(line)) !== null) {
+            builder.push(
+                i,
+                match.index,
+                match[0].length,
+                1, // type
+                0  // no modifiers
+            );
+        }
+
+        // Detectar palavras-chave
+        const keywordRegex = /\b(função|classe|se|senão|enquanto|para|retorne|publico|privado|protegido|estática|assíncrono|aguarde|externo|obter|definir|nulo|verdadeiro|falso)\b/g;
+        while ((match = keywordRegex.exec(line)) !== null) {
+            builder.push(
+                i,
+                match.index,
+                match[0].length,
+                15, // keyword
+                0
+            );
+        }
+
+        // Detectar comentários
+        const commentRegex = /\/\/.*$/g;
+        while ((match = commentRegex.exec(line)) !== null) {
+            builder.push(
+                i,
+                match.index,
+                match[0].length,
+                14, // comment
+                0
+            );
+        }
+
+        // Detectar strings
+        const stringRegex = /"[^"]*"/g;
+        while ((match = stringRegex.exec(line)) !== null) {
+            builder.push(
+                i,
+                match.index,
+                match[0].length,
+                16, // string
+                0
+            );
+        }
+
+        // Detectar números
+        const numberRegex = /\b\d+(\.\d+)?\b/g;
+        while ((match = numberRegex.exec(line)) !== null) {
+            builder.push(
+                i,
+                match.index,
+                match[0].length,
+                17, // number
+                0
+            );
+        }
+
+        // Detectar operadores
+        const operatorRegex = /(\+|\-|\*|\/|%|==|!=|<=|>=|<|>|&&|\|\||!)/g;
+        while ((match = operatorRegex.exec(line)) !== null) {
+            builder.push(
+                i,
+                match.index,
+                match[0].length,
+                18, // operator
+                0
+            );
+        }
+    }
+
+    return builder.build();
+});
+
+// PREPARE RENAME (para validação)
+connection.onPrepareRename((params: PrepareRenameParams): Range | null => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return null;
+
+    const pos = params.position;
+    const lineText = document.getText({ start: { line: pos.line, character: 0 }, end: { line: pos.line + 1, character: 0 } });
+    const wordInfo = getWordAtPosition(lineText, pos.character);
+    if (!wordInfo) return null;
+
+    // Verificar se a palavra pode ser renomeada (é um símbolo válido)
+    const word = wordInfo.word;
+    const currentSymbols = workspaceSymbols.get(document.uri) || [];
+    const symbol = currentSymbols.find(s => s.name === word);
+    
+    if (symbol) {
+        return {
+            start: { line: pos.line, character: wordInfo.start },
+            end: { line: pos.line, character: wordInfo.end }
+        };
+    }
+
     return null;
+});
+
+// RENAME SYMBOL (F2)
+connection.onRenameRequest(async (params: RenameParams): Promise<WorkspaceEdit> => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return { documentChanges: [] };
+
+    const pos = params.position;
+    const lineText = document.getText({ start: { line: pos.line, character: 0 }, end: { line: pos.line + 1, character: 0 } });
+    const wordInfo = getWordAtPosition(lineText, pos.character);
+    if (!wordInfo) return { documentChanges: [] };
+
+    const oldName = wordInfo.word;
+    const newName = params.newName;
+
+    if (!newName || newName === oldName) return { documentChanges: [] };
+
+    const documentChanges: TextDocumentEdit[] = [];
+
+    // Buscar todas as referências usando a lógica do Find References
+    for (const [uri, symbols] of workspaceSymbols) {
+        const doc = documents.get(uri);
+        if (!doc) continue;
+
+        const text = doc.getText();
+        const lines = text.split('\n');
+        const edits: TextEdit[] = [];
+
+        // Buscar todas as ocorrências da palavra no documento
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            const regex = new RegExp(`\\b${escapeRegex(oldName)}\\b`, 'g');
+            let match;
+            while ((match = regex.exec(line)) !== null) {
+                // Adicionar edição
+                edits.push({
+                    range: {
+                        start: { line: i, character: match.index },
+                        end: { line: i, character: match.index + oldName.length }
+                    },
+                    newText: newName
+                });
+            }
+        }
+
+        if (edits.length > 0) {
+            documentChanges.push({
+                textDocument: { uri: uri, version: doc.version },
+                edits: edits
+            });
+        }
+    }
+
+    // Atualizar cache de símbolos após renomear
+    setTimeout(() => {
+        for (const doc of documents.all()) {
+            const symbols = extractSymbolsFromDocument(doc);
+            workspaceSymbols.set(doc.uri, symbols);
+        }
+    }, 100);
+
+    return { documentChanges };
+});
+
+// CODE FORMATTING
+connection.onDocumentFormatting(async (params: DocumentFormattingParams): Promise<TextEdit[]> => {
+    const document = documents.get(params.textDocument.uri);
+    if (!document) return [];
+
+    const text = document.getText();
+    const lines = text.split('\n');
+    const formattedLines: string[] = [];
+    let indentLevel = 0;
+    const indentSize = 4; // 4 espaços por nível
+
+    for (const line of lines) {
+        const trimmed = line.trim();
+        
+        // Se for linha de fechamento, reduzir indentação antes
+        if (trimmed.startsWith('}') || trimmed.startsWith('}') || trimmed.startsWith(']')) {
+            indentLevel = Math.max(0, indentLevel - 1);
+        }
+
+        // Aplicar indentação
+        const indent = ' '.repeat(indentLevel * indentSize);
+        let formattedLine = indent + trimmed;
+
+        // Regras de espaçamento em operadores
+        formattedLine = formattedLine
+            .replace(/\s*=\s*/g, ' = ')
+            .replace(/\s*==\s*/g, ' == ')
+            .replace(/\s*!=\s*/g, ' != ')
+            .replace(/\s*<=\s*/g, ' <= ')
+            .replace(/\s*>=\s*/g, ' >= ')
+            .replace(/\s*<\s*/g, ' < ')
+            .replace(/\s*>\s*/g, ' > ')
+            .replace(/\s*\+\s*/g, ' + ')
+            .replace(/\s*-\s*/g, ' - ')
+            .replace(/\s*\*\s*/g, ' * ')
+            .replace(/\s*\/\s*/g, ' / ')
+            .replace(/\s*&&\s*/g, ' && ')
+            .replace(/\s*\|\|\s*/g, ' || ');
+
+        formattedLines.push(formattedLine);
+
+        // Se for linha de abertura, aumentar indentação para próxima linha
+        if (trimmed.endsWith('{') || trimmed.endsWith('[')) {
+            indentLevel++;
+        }
+    }
+
+    const formattedText = formattedLines.join('\n');
+
+    return [{
+        range: {
+            start: { line: 0, character: 0 },
+            end: { line: lines.length, character: lines[lines.length - 1].length }
+        },
+        newText: formattedText
+    }];
 });
 
 function escapeRegex(s: string): string {
@@ -1105,10 +2901,15 @@ function getWordAtPosition(line: string, character: number): { word: string; sta
 // DOCUMENT SYMBOLS (Outline/Breadcrumbs)
 // ------------------------
 connection.onDocumentSymbol((params: DocumentSymbolParams): DocumentSymbol[] => {
-    const document = documents.get(params.textDocument.uri);
-    if (!document) return [];
-    const text = document.getText();
-    return buildDocumentSymbols(text);
+    try {
+        const document = documents.get(params.textDocument.uri);
+        if (!document) return [];
+        const text = document.getText();
+        return buildDocumentSymbols(text);
+    } catch (error) {
+        console.error('Error in documentSymbol:', error);
+        return [];
+    }
 });
 
 // ------------------------
@@ -1292,7 +3093,9 @@ function parseClassLikeMembers(text: string, startLine: number, blockEndOffset: 
             continue;
         }
     }
-    return symbols;
+    
+    // Validar todos os símbolos antes de retornar
+    return symbols.map(validateDocumentSymbol);
 }
 
 function computeLineOffsets(lines: string[]): number[] {
@@ -1324,7 +3127,31 @@ function offsetToPos(lineOffsets: number[], offset: number): Position {
 function makeSelectionRange(line: string, lineNum: number, name: string, nameIdx: number) {
     const startChar = Math.max(0, nameIdx);
     const endChar = startChar + name.length;
+    // Garantir que selectionRange esteja sempre dentro de uma linha válida
     return { start: { line: lineNum, character: startChar }, end: { line: lineNum, character: endChar } };
+}
+
+// Validação para garantir que selectionRange está contido em range
+function validateDocumentSymbol(symbol: DocumentSymbol): DocumentSymbol {
+    const { range, selectionRange } = symbol;
+    
+    // Se selectionRange não estiver contido em range, ajustar
+    if (selectionRange.start.line < range.start.line ||
+        selectionRange.start.line > range.end.line ||
+        (selectionRange.start.line === range.end.line && selectionRange.start.character > range.end.character)) {
+        // Ajustar selectionRange para ser igual ao range ou para a primeira linha do range
+        symbol.selectionRange = {
+            start: range.start,
+            end: { line: range.start.line, character: range.end.character || range.start.character + 1 }
+        };
+    }
+    
+    // Validar children recursivamente
+    if (symbol.children) {
+        symbol.children = symbol.children.map(validateDocumentSymbol);
+    }
+    
+    return symbol;
 }
 
 function findMatchingBrace(text: string, openBraceOffset: number): number {
@@ -1352,8 +3179,6 @@ function flattenToSymbolInformation(docSymbols: DocumentSymbol[], uri: string, c
 }
 
 // Utilitários de workspace
-import * as fs from 'fs';
-import * as path from 'path';
 
 function uriToFsPath(uri: string): string {
     // file:///C:/x/y -> C:\x\y

@@ -24,7 +24,8 @@
         "interpolation"
     ],
     "activationEvents": [
-        "onLanguage:pordosol"
+        "onLanguage:pordosol",
+        "onDebug:pordosol"
     ],
     "main": "./client/out/extension.js",
     "contributes": {
@@ -65,8 +66,8 @@
                         "properties": {
                             "program": {
                                 "type": "string",
-                                "description": "Caminho para o arquivo .pbc a executar",
-                                "default": "${fileDirname}/${fileBasenameNoExtension}.pbc"
+                                "description": "Caminho para o arquivo .pr ou .pbc a executar",
+                                "default": "${file}"
                             },
                             "cwd": {
                                 "type": "string",
@@ -95,6 +96,15 @@
                         "cwd": "${workspaceFolder}",
                         "interpreterPath": "${workspaceFolder}/compilador-portugues/target/debug/interpretador.exe",
                         "args": []
+                    },
+                    {
+                        "type": "pordosol",
+                        "request": "launch",
+                        "name": "Depurar Por Do Sol (Modo Debug)",
+                        "program": "${fileDirname}/${fileBasenameNoExtension}.pbc",
+                        "cwd": "${workspaceFolder}",
+                        "interpreterPath": "${workspaceFolder}/compilador-portugues/target/debug/interpretador.exe",
+                        "args": ["--debug"]
                     }
                 ]
             }
@@ -120,6 +130,27 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Habilitar análise de ownership"
+                },
+                "pordosolLanguageServer.stdlibPaths": {
+                    "scope": "resource",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "Caminhos para bibliotecas .pbl da biblioteca padrão (Biblioteca Por do Sol)"
+                },
+                "pordosolLanguageServer.formatOnSave": {
+                    "scope": "resource",
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Formatar código automaticamente ao salvar"
+                },
+                "pordosolLanguageServer.tabSize": {
+                    "scope": "resource",
+                    "type": "number",
+                    "default": 4,
+                    "description": "Tamanho da tabulação para formatação"
                 }
             }
         }
