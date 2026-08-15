@@ -2,8 +2,8 @@
     "name": "pordosol-language-server",
     "displayName": "🌅 Por Do Sol - Complete Language Support",
     "description": "Suporte completo para linguagem Por Do Sol: syntax highlighting, LSP, autocompletar e validação",
-    "version": "2.0.0",
-    "publisher": "adriano-severino",
+    "version": "2.0.1",
+    "publisher": "adriano-xavier",
     "repository": {
         "type": "git",
         "url": "https://github.com/Adriano-Severino/pordosol-language-server.git"
@@ -25,7 +25,10 @@
     ],
     "activationEvents": [
         "onLanguage:pordosol",
-        "onDebug:pordosol"
+        "onDebug:pordosol",
+        "onCommand:pordosol.startDebug",
+        "onCommand:pordosol.compile",
+        "onCommand:pordosol.createLaunchConfig"
     ],
     "main": "./client/out/extension.js",
     "contributes": {
@@ -76,8 +79,13 @@
                             },
                             "interpreterPath": {
                                 "type": "string",
-                                "description": "Caminho do interpretador (interpretador.exe)",
-                                "default": "${workspaceFolder}/compilador-portugues/target/debug/interpretador.exe"
+                                "description": "Caminho do interpretador (interpretador.exe) - deixe vazio para descoberta automática",
+                                "default": ""
+                            },
+                            "compiladorPath": {
+                                "type": "string",
+                                "description": "Caminho do compilador (compilador.exe) - deixe vazio para descoberta automática",
+                                "default": ""
                             },
                             "args": {
                                 "type": "array",
@@ -91,22 +99,88 @@
                     {
                         "type": "pordosol",
                         "request": "launch",
-                        "name": "Depurar Por Do Sol (.pbc)",
-                        "program": "${fileDirname}/${fileBasenameNoExtension}.pbc",
+                        "name": "Executar Por Do Sol (Play)",
+                        "program": "${file}",
                         "cwd": "${workspaceFolder}",
-                        "interpreterPath": "${workspaceFolder}/compilador-portugues/target/debug/interpretador.exe",
+                        "interpreterPath": "",
+                        "compiladorPath": "",
                         "args": []
                     },
                     {
                         "type": "pordosol",
                         "request": "launch",
                         "name": "Depurar Por Do Sol (Modo Debug)",
-                        "program": "${fileDirname}/${fileBasenameNoExtension}.pbc",
+                        "program": "${file}",
                         "cwd": "${workspaceFolder}",
-                        "interpreterPath": "${workspaceFolder}/compilador-portugues/target/debug/interpretador.exe",
-                        "args": ["--debug"]
+                        "interpreterPath": "",
+                        "compiladorPath": "",
+                        "args": []
                     }
                 ]
+            }
+        ],
+        "commands": [
+            {
+                "command": "pordosol.runWithoutDebug",
+                "title": "Executar Por Do Sol sem Debug",
+                "category": "Por Do Sol"
+            },
+            {
+                "command": "pordosol.startDebug",
+                "title": "Iniciar Debug Por Do Sol",
+                "category": "Por Do Sol"
+            },
+            {
+                "command": "pordosol.compile",
+                "title": "Compilar Arquivo Por Do Sol",
+                "category": "Por Do Sol"
+            },
+            {
+                "command": "pordosol.createLaunchConfig",
+                "title": "Criar Configuração de Debug",
+                "category": "Por Do Sol"
+            }
+        ],
+        "keybindings": [
+            {
+                "command": "pordosol.runWithoutDebug",
+                "key": "ctrl+f5",
+                "when": "editorLangId == pordosol"
+            },
+            {
+                "command": "workbench.action.debug.stop",
+                "key": "shift+f5",
+                "when": "debugState == 'running' && editorLangId == pordosol"
+            },
+            {
+                "command": "editor.debug.action.toggleBreakpoint",
+                "key": "f9",
+                "when": "editorLangId == pordosol"
+            },
+            {
+                "command": "workbench.action.debug.stepOver",
+                "key": "f10",
+                "when": "debugState == 'running' && editorLangId == pordosol"
+            },
+            {
+                "command": "workbench.action.debug.stepInto",
+                "key": "f11",
+                "when": "debugState == 'running' && editorLangId == pordosol"
+            },
+            {
+                "command": "workbench.action.debug.stepOut",
+                "key": "shift+f11",
+                "when": "debugState == 'running' && editorLangId == pordosol"
+            },
+            {
+                "command": "pordosol.compile",
+                "key": "ctrl+shift+b",
+                "when": "editorLangId == pordosol"
+            },
+            {
+                "command": "pordosol.runWithoutDebug",
+                "key": "ctrl+shift+r",
+                "when": "editorLangId == pordosol"
             }
         ],
         "configuration": {
@@ -151,6 +225,18 @@
                     "type": "number",
                     "default": 4,
                     "description": "Tamanho da tabulação para formatação"
+                },
+                "pordosol.compiladorPath": {
+                    "scope": "machine-overridable",
+                    "type": "string",
+                    "default": "",
+                    "description": "Caminho manual para o compilador (sobrescreve descoberta automática)"
+                },
+                "pordosol.interpretadorPath": {
+                    "scope": "machine-overridable",
+                    "type": "string",
+                    "default": "",
+                    "description": "Caminho manual para o interpretador (sobrescreve descoberta automática)"
                 }
             }
         }

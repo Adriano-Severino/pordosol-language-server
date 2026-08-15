@@ -61,7 +61,7 @@
             "patterns": [
                 {
                     "name": "keyword.control.cs",
-                    "match": "\\b(se|então|senão|enquanto|para|função|retorne|imprima|novo|este)\\b"
+                    "match": "\\b(se|então|senão|enquanto|para|função|retorne|imprima|novo|nova|este)\\b"
                 },
                 {
                     "name": "storage.type.class.cs",
@@ -73,7 +73,7 @@
                 },
                 {
                     "name": "storage.modifier.cs",
-                    "match": "\\b(publico|privado|protegido|estática|sobrescreve|redefinível|abstrata)\\b"
+                    "match": "\\b(público|publico|privado|protegido|estática|sobrescreve|redefinível|abstrata)\\b"
                 },
                 {
                     "name": "keyword.other.base.cs",

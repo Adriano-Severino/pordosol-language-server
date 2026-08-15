@@ -632,7 +632,7 @@ connection.onCompletion(
             {
                 label: 'classe',
                 kind: CompletionItemKind.Class,
-                insertText: 'classe ${1:Nome} {\n\t${2:publico} ${3:inteiro} ${4:propriedade};\n\n\t${1:Nome}(${5:parametros}) {\n\t\t${6:// inicialização}\n\t}\n\n\t${2:publico} ${7:vazio} ${8:metodo}() {\n\t\t${9:// código}\n\t}\n}',
+                insertText: 'classe ${1:Nome} {\n\t${2:público} ${3:inteiro} ${4:propriedade};\n\n\t${1:Nome}(${5:parametros}) {\n\t\t${6:// inicialização}\n\t}\n\n\t${2:público} ${7:vazio} ${8:metodo}() {\n\t\t${9:// código}\n\t}\n}',
                 documentation: 'Declaração de classe com propriedades e métodos (sem palavra construtor)',
                 detail: 'Classe - Por Do Sol',
                 data: 2
@@ -662,12 +662,20 @@ connection.onCompletion(
                 data: 19
             },
             {
+                label: 'nova',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'nova ${1:Classe}(${2:argumentos})',
+                documentation: 'Criação de nova instância de classe (forma feminina)',
+                detail: 'Instanciação - Por Do Sol',
+                data: 20
+            },
+            {
                 label: 'espaco',
                 kind: CompletionItemKind.Module,
                 insertText: 'espaco ${1:Nome} {\n\t${2:// conteúdo}\n}',
                 documentation: 'Declaração de namespace/módulo',
                 detail: 'Namespace - Por Do Sol',
-                data: 20
+                data: 21
             },
             {
                 label: '@Nativo',
@@ -675,7 +683,7 @@ connection.onCompletion(
                 insertText: '@Nativo("${1:Namespace::Metodo}")',
                 documentation: 'Atributo para marcar métodos que chamam código nativo do runtime',
                 detail: 'Atributo Nativo - Por Do Sol',
-                data: 71
+                data: 72
             }
         ];
 
@@ -687,23 +695,23 @@ connection.onCompletion(
                 insertText: 'usando Sistema.Console;\n\nEscreverLinha("${1:mensagem}");',
                 documentation: 'Snippet para usar Sistema.Console e EscreverLinha',
                 detail: 'Sistema.Console - Por Do Sol',
-                data: 72
+                data: 73
             },
             {
                 label: 'classe Console',
                 kind: CompletionItemKind.Snippet,
-                insertText: 'classe Console {\n\t@Nativo("Console::EscreverLinha")\n\tpublico estatica externo vazio EscreverLinha(texto mensagem);\n\n\t@Nativo("Console::LerLinha")\n\tpublico estatica externo texto LerLinha();\n}',
+                insertText: 'classe Console {\n\t@Nativo("Console::EscreverLinha")\n\tpúblico estatica externo vazio EscreverLinha(texto mensagem);\n\n\t@Nativo("Console::LerLinha")\n\tpúblico estatica externo texto LerLinha();\n}',
                 documentation: 'Declaração de classe Console com métodos nativos (sintaxe sistema-padrao)',
                 detail: 'Classe Console - Por Do Sol',
-                data: 73
+                data: 74
             },
             {
                 label: 'classe Arquivo',
                 kind: CompletionItemKind.Snippet,
-                insertText: 'classe Arquivo {\n\t@Nativo("Arquivo::LerTudo")\n\tpublico texto LerTudo(texto caminho);\n\n\t@Nativo("Arquivo::Escrever")\n\tpublico vazio Escrever(texto caminho, texto conteudo);\n}',
-                documentation: 'Declaração de classe Arquivo com métodos nativos',
+                insertText: 'classe Arquivo {\n\t@Nativo("Arquivo::LerTexto")\n\tpúblico estatica externo texto LerTexto(texto caminho);\n\n\t@Nativo("Arquivo::EscreverTexto")\n\tpúblico estatica externo vazio EscreverTexto(texto caminho, texto conteudo);\n}',
+                documentation: 'Declaração de classe Arquivo com métodos nativos (sintaxe sistema-padrao)',
                 detail: 'Classe Arquivo - Por Do Sol',
-                data: 74
+                data: 75
             },
             {
                 label: 'função matemática',
@@ -711,7 +719,7 @@ connection.onCompletion(
                 insertText: 'função ${1:nome}(${2:parametros}) => ${3:tipo} {\n\t${4:// corpo usando funções matemáticas}\n\tretorne ${5:resultado};\n}',
                 documentation: 'Snippet para função matemática usando stdlib',
                 detail: 'Função Matemática - Por Do Sol',
-                data: 75
+                data: 76
             },
             {
                 label: 'processamento string',
@@ -719,7 +727,7 @@ connection.onCompletion(
                 insertText: 'texto ${1:resultado} = ${2:para_maiusculo|para_minusculo|trecho|contem|substituir|dividir|remover_espacos}(${3:texto});',
                 documentation: 'Snippet para processamento de strings',
                 detail: 'Processamento String - Por Do Sol',
-                data: 76
+                data: 77
             },
             {
                 label: 'novo array',
@@ -727,7 +735,7 @@ connection.onCompletion(
                 insertText: 'novo ${1:Tipo}[${2:tamanho}]',
                 documentation: 'Cria um novo array com tamanho fixo',
                 detail: 'Array - Por Do Sol',
-                data: 77
+                data: 78
             },
             {
                 label: 'nova lista',
@@ -735,27 +743,35 @@ connection.onCompletion(
                 insertText: 'novo ${1:Tipo}[]',
                 documentation: 'Cria uma nova lista (array dinâmico)',
                 detail: 'Lista - Por Do Sol',
-                data: 78
+                data: 79
             },
             {
                 label: 'propriedade com corpo',
                 kind: CompletionItemKind.Snippet,
-                insertText: 'publico ${1:tipo} ${2:Nome} {\n\tobter {\n\t\tretorne ${3:valor};\n\t}\n\tdefinir {\n\t\t${4:campo} = valor;\n\t}\n}',
+                insertText: 'público ${1:tipo} ${2:Nome} {\n\tobter {\n\t\tretorne ${3:valor};\n\t}\n\tdefinir {\n\t\t${4:campo} = valor;\n\t}\n}',
                 documentation: 'Propriedade com getters e setters',
                 detail: 'Propriedade - Por Do Sol',
-                data: 79
+                data: 80
             }
         ];
 
         // Modificadores de acesso
         const accessModifiers = [
             {
+                label: 'público',
+                kind: CompletionItemKind.Keyword,
+                insertText: 'público ',
+                documentation: 'Modificador de acesso público',
+                detail: 'Acesso - Por Do Sol',
+                data: 80
+            },
+            {
                 label: 'publico',
                 kind: CompletionItemKind.Keyword,
                 insertText: 'publico ',
-                documentation: 'Modificador de acesso público',
+                documentation: 'Modificador de acesso público (sem acento)',
                 detail: 'Acesso - Por Do Sol',
-                data: 21
+                data: 81
             },
             {
                 label: 'privado',
@@ -763,7 +779,7 @@ connection.onCompletion(
                 insertText: 'privado ',
                 documentation: 'Modificador de acesso privado',
                 detail: 'Acesso - Por Do Sol',
-                data: 22
+                data: 82
             },
             {
                 label: 'protegido',
@@ -771,7 +787,7 @@ connection.onCompletion(
                 insertText: 'protegido ',
                 documentation: 'Modificador de acesso protegido',
                 detail: 'Acesso - Por Do Sol',
-                data: 23
+                data: 83
             },
             {
                 label: 'estática',
@@ -779,7 +795,7 @@ connection.onCompletion(
                 insertText: 'estática ',
                 documentation: 'Modificador para membros estáticos da classe',
                 detail: 'Modificador estático - Por Do Sol',
-                data: 30
+                data: 84
             },
             {
                 label: 'sobrescreve',
@@ -787,7 +803,7 @@ connection.onCompletion(
                 insertText: 'sobrescreve ',
                 documentation: 'Modificador para sobrescrever um membro redefinível (override)',
                 detail: 'Modificador de Sobrescrita - Por Do Sol',
-                data: 31
+                data: 85
             },
             {
                 label: 'redefinível',
@@ -795,7 +811,7 @@ connection.onCompletion(
                 insertText: 'redefinível ',
                 documentation: 'Modificador para permitir que um membro seja sobrescrito em classes derivadas (virtual)',
                 detail: 'Modificador Redefinível - Por Do Sol',
-                data: 32
+                data: 86
             },
             {
                 label: 'abstrata',
@@ -803,7 +819,7 @@ connection.onCompletion(
                 insertText: 'abstrata ',
                 documentation: 'Define classe ou método abstrato que deve ser implementado por classes derivadas',
                 detail: 'Modificador Abstrato - Por Do Sol',
-                data: 34
+                data: 87
             },
             {
                 label: 'assíncrono',
@@ -811,7 +827,7 @@ connection.onCompletion(
                 insertText: 'assíncrono ',
                 documentation: 'Modificador para funções assíncronas (async)',
                 detail: 'Modificador Assíncrono - Por Do Sol',
-                data: 37
+                data: 88
             },
             {
                 label: 'aguarde',
@@ -819,7 +835,7 @@ connection.onCompletion(
                 insertText: 'aguarde ',
                 documentation: 'Palavra-chave await para aguardar resultado de operação assíncrona',
                 detail: 'Await - Por Do Sol',
-                data: 38
+                data: 89
             }
         ];
 
@@ -831,7 +847,7 @@ connection.onCompletion(
                 insertText: 'inteiro ${1:nome} = ${2:0};',
                 documentation: 'Tipo de dados para números inteiros de 64 bits',
                 detail: 'Tipo de dados - Por Do Sol',
-                data: 24
+                data: 90
             },
             {
                 label: 'texto',
@@ -839,7 +855,7 @@ connection.onCompletion(
                 insertText: 'texto ${1:nome} = "${2:valor}";',
                 documentation: 'Tipo de dados para strings de texto',
                 detail: 'Tipo de dados - Por Do Sol',
-                data: 25
+                data: 91
             },
             {
                 label: 'booleano',
@@ -847,7 +863,7 @@ connection.onCompletion(
                 insertText: 'booleano ${1:nome} = ${2|verdadeiro,falso|};',
                 documentation: 'Tipo de dados lógico verdadeiro/falso',
                 detail: 'Tipo de dados - Por Do Sol',
-                data: 26
+                data: 92
             },
             {
                 label: 'vazio',
@@ -855,7 +871,7 @@ connection.onCompletion(
                 insertText: 'vazio',
                 documentation: 'Tipo void para funções que não retornam valor',
                 detail: 'Tipo de dados - Por Do Sol',
-                data: 27
+                data: 93
             },
             {
                 label: 'objeto',
@@ -863,7 +879,7 @@ connection.onCompletion(
                 insertText: 'objeto',
                 documentation: 'Tipo base para objetos não tipados',
                 detail: 'Tipo de dados - Por Do Sol',
-                data: 34
+                data: 94
             },
             {
                 label: 'nulo',
@@ -871,7 +887,7 @@ connection.onCompletion(
                 insertText: 'nulo',
                 documentation: 'Literal nulo, representa ausência de valor',
                 detail: 'Literal - Por Do Sol',
-                data: 35
+                data: 95
             },
             {
                 label: 'externo',
@@ -879,7 +895,7 @@ connection.onCompletion(
                 insertText: 'externo',
                 documentation: 'Palavra-chave para métodos externos (sem implementação no Por Do Sol)',
                 detail: 'Modificador - Por Do Sol',
-                data: 36
+                data: 96
             },
             {
                 label: 'decimal',
@@ -887,7 +903,7 @@ connection.onCompletion(
                 insertText: 'decimal ${1:nome} = ${2:0.0m};',
                 documentation: 'Tipo de dados para números decimais de alta precisão, similar ao C#',
                 detail: 'Tipo de dados decimal - Por Do Sol',
-                data: 33
+                data: 97
             },
             {
                 label: 'duplo',
@@ -895,7 +911,7 @@ connection.onCompletion(
                 insertText: 'duplo ${1:nome} = ${2:0.0};',
                 documentation: 'Tipo de ponto flutuante de dupla precisão (64 bits), equivalente a double',
                 detail: 'Tipo de dados - Por Do Sol',
-                data: 35
+                data: 98
             },
             {
                 label: 'flutuante',
@@ -903,7 +919,7 @@ connection.onCompletion(
                 insertText: 'flutuante ${1:nome} = ${2:0.0f};',
                 documentation: 'Tipo de ponto flutuante de precisão simples (32 bits), equivalente a float',
                 detail: 'Tipo de dados - Por Do Sol',
-                data: 36
+                data: 99
             }
         ];
 
@@ -915,7 +931,7 @@ connection.onCompletion(
                 insertText: 'verdadeiro',
                 documentation: 'Valor booleano verdadeiro',
                 detail: 'Valor booleano',
-                data: 28
+                data: 100
             },
             {
                 label: 'falso',
@@ -923,7 +939,7 @@ connection.onCompletion(
                 insertText: 'falso',
                 documentation: 'Valor booleano falso',
                 detail: 'Valor booleano',
-                data: 29
+                data: 101
             }
         ];
 
@@ -938,8 +954,8 @@ connection.onCompletion(
             completions.push(...accessModifiers, ...types, ...oopKeywords.slice(1)); // Excluir 'classe'
         }
 
-        // Contexto após 'novo'
-        if (lineText.includes('novo ')) {
+        // Contexto após 'novo' ou 'nova'
+        if (lineText.includes('novo ') || lineText.includes('nova ')) {
             completions.push(...getClassNames(text));
         }
 
@@ -993,14 +1009,14 @@ Executa código baseado em uma condição lógica.`
 \`\`\`
 classe MinhaClasse 
 {
-    publico inteiro propriedade;
+    público inteiro propriedade;
     
     MinhaClasse(parametros) 
     {
         // inicialização sem palavra construtor
     }
     
-    publico vazio metodo() 
+    público vazio metodo() 
     {
         // código do método
     }
@@ -1384,7 +1400,7 @@ Marca métodos que chamam código nativo do runtime.
 
 \`\`\`
 @Nativo("Sistema::Console::EscreverLinha")
-publico vazio EscreverLinha(texto mensagem);
+público vazio EscreverLinha(texto mensagem);
 \`\`\`
 
 Use este atributo para métodos que são implementados em Rust no runtime.`
@@ -1414,10 +1430,10 @@ Declaração de classe Console com métodos nativos.
 \`\`\`
 classe Console {
     @Nativo("Console::EscreverLinha")
-    publico estatica vazio EscreverLinha(texto mensagem);
+    público estatica vazio EscreverLinha(texto mensagem);
 
     @Nativo("Console::LerLinha")
-    publico estatica texto LerLinha();
+    público estatica texto LerLinha();
 }
 \`\`\``
             };
@@ -1432,10 +1448,10 @@ Declaração de classe Arquivo com métodos nativos.
 \`\`\`
 classe Arquivo {
     @Nativo("Arquivo::LerTudo")
-    publico texto LerTudo(texto caminho);
+    público texto LerTudo(texto caminho);
 
     @Nativo("Arquivo::Escrever")
-    publico vazio Escrever(texto caminho, texto conteudo);
+    público vazio Escrever(texto caminho, texto conteudo);
 }
 \`\`\``
             };
@@ -1503,7 +1519,7 @@ Lista<texto> nomes = novo texto[];
 Propriedade com getters e setters.
 
 \`\`\`
-publico inteiro Idade {
+público inteiro Idade {
     obter {
         retorne _idade;
     }
@@ -1523,7 +1539,7 @@ Marca métodos que chamam código nativo do runtime (sintaxe usada na biblioteca
 
 \`\`\`
 @Nativo("Console::EscreverLinha")
-publico estatica externo vazio EscreverLinha(texto mensagem);
+público estatica externo vazio EscreverLinha(texto mensagem);
 \`\`\`
 
 Use esta sintaxe nos arquivos da biblioteca padrão.`
@@ -1705,7 +1721,7 @@ async function computeDiagnostics(textDocument: TextDocument): Promise<Diagnosti
                 }
 
                 // Se encontrou início de construtor ou função
-                if (prevLine.match(/^(publico|privado|protegido)?\s*(função\s+\w+|[A-Z]\w*)\s*\(/)) {
+                if (prevLine.match(/^(público|publico|privado|protegido)?\s*(função\s+\w+|[A-Z]\w*)\s*\(/)) {
                     return true;
                 }
 
@@ -1745,7 +1761,7 @@ async function computeDiagnostics(textDocument: TextDocument): Promise<Diagnosti
         );
 
         // NÃO VALIDAR se:
-        const isClassDecl = /^(publico|privado|protegido)?\s*(abstrata\s+)?classe\b/.test(trimmed);
+        const isClassDecl = /^(público|publico|privado|protegido)?\s*(abstrata\s+)?classe\b/.test(trimmed);
         const skipValidation = (
             isInsideMethodSignature(index) ||           // Dentro de assinatura de método
             isInsidePropertyBlock(index) ||             // Dentro de bloco de propriedades
@@ -1755,7 +1771,7 @@ async function computeDiagnostics(textDocument: TextDocument): Promise<Diagnosti
             trimmed.endsWith(')') ||                    // Linha termina com parênteses (fim de parâmetros)
             isClassDecl ||                               // Declaração de classe (inclui abstrata)
             trimmed.includes('espaco ') ||              // Declaração de namespace
-            trimmed.match(/^(publico|privado|protegido)\s+(inteiro|texto|booleano|duplo|flutuante|decimal)\s+\w+\s*{/) // Propriedade com getter/setter
+            trimmed.match(/^(público|publico|privado|protegido)\s+(inteiro|texto|booleano|duplo|flutuante|decimal)\s+\w+\s*{/) // Propriedade com getter/setter
         );
 
         if (shouldEndWithSemicolon && !skipValidation) {
@@ -2028,7 +2044,7 @@ connection.onHover((params: HoverParams): Hover | null => {
             return { type: 'class', name: word, members: [] };
         }
         // Palavras-chave
-        const keywords = ['se', 'classe', 'construtor', 'este', 'novo', 'espaco', 'usando', 'var', 'função', 'sobrescreve', 'redefinível', 'abstrata'];
+        const keywords = ['se', 'classe', 'construtor', 'este', 'novo', 'nova', 'espaco', 'usando', 'var', 'função', 'sobrescreve', 'redefinível', 'abstrata'];
         if (keywords.includes(word)) {
             return { type: 'keyword', name: word, documentation: staticHoverInfo[word] };
         }
@@ -2042,6 +2058,7 @@ connection.onHover((params: HoverParams): Hover | null => {
         'construtor': '**Método Construtor** (Por Do Sol)\n\nUse apenas o nome da classe: NomeClasse() {...}\n',
         'este': '**Referência ao Objeto** (Por Do Sol)\n\nUsado para acessar membros da instância atual.\n',
         'novo': '**Instanciação** (Por Do Sol)\n\nCriação de nova instância de classe.\n',
+        'nova': '**Instanciação** (Por Do Sol)\n\nCriação de nova instância de classe (forma feminina).\n',
         'espaco': '**Namespace** (Por Do Sol)\n\nOrganização modular do código.\n',
         'var': '**Inferência de Tipo** (Por Do Sol)\n\nDeclaração com tipo inferido automaticamente.\n',
         'função': '**Declaração de Função** (Por Do Sol)\n\nDefinição de função com tipo de retorno.\n',
@@ -2094,7 +2111,7 @@ connection.onSignatureHelp((params: SignatureHelpParams): SignatureHelp | null =
 
     // Tenta localizar declaração: função nome( ... ) ou método [mods] tipo nome( ... )
     const funcDecl = new RegExp(`^\\s*função\\s+${escapeRegex(name)}\\s*\\(([^)]*)\\)`);
-    const methodDecl = new RegExp(`^\\s*(?:publico|privado|protegido)?\\s*(?:estática\\s+)?(?:redefinível\\s+|sobrescreve\\s+|abstrata\\s+)?(?:inteiro|texto|booleano|duplo|flutuante|decimal|vazio)\\s+${escapeRegex(name)}\\s*\\(([^)]*)\\)`);
+    const methodDecl = new RegExp(`^\\s*(?:público|publico|privado|protegido)?\\s*(?:estática\\s+)?(?:redefinível\\s+|sobrescreve\\s+|abstrata\\s+)?(?:inteiro|texto|booleano|duplo|flutuante|decimal|vazio)\\s+${escapeRegex(name)}\\s*\\(([^)]*)\\)`);
 
     let paramsList: string | null = null;
     for (const l of lines) {
@@ -2166,7 +2183,7 @@ function extractSymbolsFromDocument(document: TextDocument): SymbolInfo[] {
         // função nome(
         { kind: 'function', regex: /(^|\s)função\s+([a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*)\s*\(/ },
         // método: [mods] tipo nome(
-        { kind: 'method', regex: /(^|\s)(publico|privado|protegido)?\s*(estática\s+)?(redefinível\s+|sobrescreves\s+|abstrata\s+)?(inteiro|texto|booleano|duplo|flutuante|decimal|vazio)\s+([a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*)\s*\(/ },
+        { kind: 'method', regex: /(^|\s)(público|publico|privado|protegido)?\s*(estática\s+)?(redefinível\s+|sobrescreves\s+|abstrata\s+)?(inteiro|texto|booleano|duplo|flutuante|decimal|vazio)\s+([a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*)\s*\(/ },
         // classe Nome
         { kind: 'class', regex: /(^|\s)classe\s+([a-zA-ZÀ-ÿ_][a-zA-ZÀ-ÿ0-9_]*)(\b|\s|{)/ },
         // interface Nome
@@ -2605,7 +2622,7 @@ connection.onCodeAction(async (params: CodeActionParams): Promise<CodeAction[] |
                     
                     // Gerar stubs
                     const stubs = interfaceMethods.map(method => {
-                        return `\n\tpublico vazio ${method}() {\n\t\t// TODO: implementar\n\t}`;
+                        return `\n\tpúblico vazio ${method}() {\n\t\t// TODO: implementar\n\t}`;
                     }).join('\n');
                     
                     const edit = TextDocumentEdit.create(
@@ -2665,7 +2682,7 @@ connection.languages.semanticTokens.on(async (params: SemanticTokensParams): Pro
         }
 
         // Detectar palavras-chave
-        const keywordRegex = /\b(função|classe|se|senão|enquanto|para|retorne|publico|privado|protegido|estática|assíncrono|aguarde|externo|obter|definir|nulo|verdadeiro|falso)\b/g;
+        const keywordRegex = /\b(função|classe|se|senão|enquanto|para|retorne|público|publico|privado|protegido|estática|assíncrono|aguarde|externo|obter|definir|nulo|verdadeiro|falso)\b/g;
         while ((match = keywordRegex.exec(line)) !== null) {
             builder.push(
                 i,
@@ -2973,7 +2990,7 @@ function buildDocumentSymbols(text: string): DocumentSymbol[] {
         }
 
         // classe Nome { ... }
-        m = /^\s*(?:publico|privado|protegido)?\s*(?:abstrata\s+)?classe\s+([A-Z][\wÀ-ÿ_]*)[^\{]*\{/.exec(line);
+        m = /^\s*(?:público|publico|privado|protegido)?\s*(?:abstrata\s+)?classe\s+([A-Z][\wÀ-ÿ_]*)[^\{]*\{/.exec(line);
         if (m) {
             const name = m[1];
             const startChar = line.indexOf(m[0]);
@@ -3065,7 +3082,7 @@ function parseClassLikeMembers(text: string, startLine: number, blockEndOffset: 
         if (!trimmed || trimmed.startsWith('//')) continue;
 
         // método: [mods] tipo nome(
-        let m = /^\s*(?:publico|privado|protegido)?\s*(?:estática\s+)?(?:redefinível\s+|sobrescreve\s+|abstrata\s+)?(inteiro|texto|booleano|duplo|flutuante|decimal|vazio)\s+([A-Za-zÀ-ÿ_][\wÀ-ÿ_]*)\s*\(/.exec(line);
+        let m = /^\s*(?:público|publico|privado|protegido)?\s*(?:estática\s+)?(?:redefinível\s+|sobrescreve\s+|abstrata\s+)?(inteiro|texto|booleano|duplo|flutuante|decimal|vazio)\s+([A-Za-zÀ-ÿ_][\wÀ-ÿ_]*)\s*\(/.exec(line);
         if (m) {
             const name = m[2];
             const nameIdx = line.indexOf(name);
@@ -3083,7 +3100,7 @@ function parseClassLikeMembers(text: string, startLine: number, blockEndOffset: 
         }
 
         // propriedade: [mods] tipo Nome { obter; definir; }
-        m = /^\s*(?:publico|privado|protegido)?\s*(?:estática\s+)?(inteiro|texto|booleano|duplo|flutuante|decimal)\s+([A-Za-zÀ-ÿ_][\wÀ-ÿ_]*)\s*\{\s*(?:obter;)?\s*(?:definir;)?\s*\}/.exec(line);
+        m = /^\s*(?:público|publico|privado|protegido)?\s*(?:estática\s+)?(inteiro|texto|booleano|duplo|flutuante|decimal)\s+([A-Za-zÀ-ÿ_][\wÀ-ÿ_]*)\s*\{\s*(?:obter;)?\s*(?:definir;)?\s*\}/.exec(line);
         if (m) {
             const name = m[2];
             const nameIdx = line.indexOf(name);

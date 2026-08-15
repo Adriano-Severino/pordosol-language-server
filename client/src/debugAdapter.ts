@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { spawn, ChildProcessWithoutNullStreams } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
+import { localizarBinarios, toolchainPronta, encontrarArquivoCorrespondente, precisaRecompilar } from './toolchain';
 
 export function registerDebugAdapter(context: vscode.ExtensionContext) {
     const factory: vscode.DebugAdapterDescriptorFactory = {
@@ -22,6 +23,10 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
     private pbcIndex: { [pbcPath: string]: Array<{ codeIds: string[]; headerLine: number; startLine: number; length: number }> } = {};
     // Controle de breakpoints enviados: por source path, lista de {codeId, ip}
     private sentBpsBySource: Map<string, Array<{ codeId: string; ip: number }>> = new Map();
+    // Controle de breakpoints ativos para decidir modo de execução
+    private hasActiveBreakpoints: boolean = false;
+    // Cache de binários descobertos
+    private cachedBinaries: { compilador: string; interpretador: string } | null = null;
 
     handleMessage(message: any): void {
         switch (message.type) {
@@ -35,7 +40,7 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
         try { this.proc?.kill(); } catch { }
     }
 
-    private handleRequest(request: any) {
+    private async handleRequest(request: any) {
         const { command, arguments: args, seq } = request;
         if (command === 'initialize') {
             this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { supportsConfigurationDoneRequest: true, supportsStepInRequest: true, supportsStepOverRequest: true, supportsStepOutRequest: true, supportsContinueRequest: true, supportsPauseRequest: true, supportsFunctionBreakpoints: true } });
@@ -46,15 +51,156 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
             const interpreterPath = args.interpreterPath as string;
             const cwd = args.cwd as string | undefined;
             const extraArgs = Array.isArray(args.args) ? args.args : [];
-            const cliArgs = [program, '--debug', ...extraArgs];
-            this.proc = spawn(interpreterPath, cliArgs, { cwd });
-            this.proc.stdout.on('data', data => this.output(data.toString()));
-            this.proc.stderr.on('data', data => this.output(data.toString()));
-            this.proc.on('exit', _code => this.send({ type: 'event', event: 'terminated' }));
-            for (const pendingCommand of this.pendingDebugCommands) this.proc.stdin.write(pendingCommand);
-            this.pendingDebugCommands.length = 0;
-            this.send({ seq, type: 'response', request_seq: seq, success: true, command });
-            this.send({ type: 'event', event: 'stopped', body: { reason: 'entry' } });
+            
+            // Add null check for program
+            if (!program) {
+                this.output(`[Por Do Sol] ERRO: Programa não especificado\n`);
+                this.send({ 
+                    seq, 
+                    type: 'response', 
+                    request_seq: seq, 
+                    success: false, 
+                    command, 
+                    body: { error: 'Programa não especificado' }
+                });
+                return;
+            }
+            
+            this.outputGreen(`Pôr do Sol — Programação em português\n\n`);
+            
+            // Descobrir binários automaticamente se não fornecidos explicitamente
+            let compiladorPath = args.compiladorPath as string | undefined;
+            let finalInterpreterPath = interpreterPath;
+            
+            if (!compiladorPath || !finalInterpreterPath || finalInterpreterPath.includes('${workspaceFolder}')) {
+                const workspaceFolder = cwd || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+                const binarios = await localizarBinarios(workspaceFolder);
+                
+                if (!toolchainPronta(binarios)) {
+                    this.output(`[Por Do Sol] ERRO: Binários não encontrados\n`);
+                    this.send({ 
+                        seq, 
+                        type: 'response', 
+                        request_seq: seq, 
+                        success: false, 
+                        command, 
+                        body: { error: 'Binários não encontrados. Configure PORDOSOL_COMPILADOR_PATH e PORDOSOL_INTERPRETADOR_PATH ou instale a ferramenta CLI.' }
+                    });
+                    return;
+                }
+                
+                compiladorPath = binarios.compilador.caminho;
+                finalInterpreterPath = binarios.interpretador.caminho;
+                this.cachedBinaries = { compilador: compiladorPath, interpretador: finalInterpreterPath };
+            }
+            
+            // Verificar se precisa compilar (se o programa for .pr)
+            let finalProgram = program;
+            if (program.endsWith('.pr')) {
+                // Update to use build directory
+                const programDir = path.dirname(program);
+                const programName = path.basename(program, '.pr');
+                const buildDir = path.join(programDir, 'build');
+                const pbcPath = path.join(buildDir, `${programName}.pbc`);
+                
+                // Create build directory if it doesn't exist
+                if (!fs.existsSync(buildDir)) {
+                    fs.mkdirSync(buildDir, { recursive: true });
+                }
+                
+                // Verificar se o .pbc existe e está atualizado
+                if (fs.existsSync(pbcPath)) {
+                    const needsRecompile = await precisaRecompilar(program, pbcPath);
+                    if (needsRecompile && compiladorPath) {
+                        try {
+                            await this.compilarArquivo(program, compiladorPath, cwd, buildDir);
+                        } catch (error) {
+                            this.output(`[Por Do Sol] ERRO na compilação: ${error instanceof Error ? error.message : String(error)}\n`);
+                            this.send({ 
+                                seq, 
+                                type: 'response', 
+                                request_seq: seq, 
+                                success: false, 
+                                command, 
+                                body: { error: `Falha na compilação: ${error instanceof Error ? error.message : String(error)}` }
+                            });
+                            return;
+                        }
+                    }
+                } else if (compiladorPath) {
+                    // .pbc não existe, compilar
+                    try {
+                        await this.compilarArquivo(program, compiladorPath, cwd, buildDir);
+                    } catch (error) {
+                        this.output(`[Por Do Sol] ERRO na compilação: ${error instanceof Error ? error.message : String(error)}\n`);
+                        this.send({ 
+                            seq, 
+                            type: 'response', 
+                            request_seq: seq, 
+                            success: false, 
+                            command, 
+                            body: { error: `Falha na compilação: ${error instanceof Error ? error.message : String(error)}` }
+                        });
+                        return;
+                    }
+                }
+                
+                finalProgram = pbcPath;
+            }
+            
+            // Verificar se o programa final existe
+            if (!fs.existsSync(finalProgram)) {
+                this.output(`[Por Do Sol] ERRO: Programa não encontrado: ${finalProgram}\n`);
+                this.send({ 
+                    seq, 
+                    type: 'response', 
+                    request_seq: seq, 
+                    success: false, 
+                    command, 
+                    body: { error: `Programa não encontrado: ${finalProgram}` }
+                });
+                return;
+            }
+            
+            // Decidir modo de execução baseado na presença de breakpoints
+            const debugMode = this.hasActiveBreakpoints;
+            const cliArgs = debugMode ? [finalProgram, '--debug', ...extraArgs] : [finalProgram, ...extraArgs];
+            
+            try {
+                this.proc = spawn(finalInterpreterPath, cliArgs, { cwd });
+                this.proc.stdout.on('data', data => this.outputBlue(data.toString()));
+                this.proc.stderr.on('data', data => this.output(data.toString()));
+                this.proc.on('exit', (code) => {
+                    this.send({ type: 'event', event: 'terminated' });
+                });
+                this.proc.on('error', (err) => {
+                    this.output(`[Por Do Sol] ERRO ao iniciar processo: ${err.message}\n`);
+                    this.send({ 
+                        type: 'event', 
+                        event: 'terminated', 
+                        body: { error: `Erro ao iniciar processo: ${err.message}` }
+                    });
+                });
+                
+                for (const pendingCommand of this.pendingDebugCommands) this.proc.stdin.write(pendingCommand);
+                this.pendingDebugCommands.length = 0;
+                this.send({ seq, type: 'response', request_seq: seq, success: true, command });
+                
+                // Em modo debug, envia evento stopped. Em modo normal, não envia.
+                if (debugMode) {
+                    this.send({ type: 'event', event: 'stopped', body: { reason: 'entry' } });
+                }
+            } catch (error) {
+                this.output(`[Por Do Sol] ERRO ao iniciar interpretador: ${error instanceof Error ? error.message : String(error)}\n`);
+                this.send({ 
+                    seq, 
+                    type: 'response', 
+                    request_seq: seq, 
+                    success: false, 
+                    command, 
+                    body: { error: `Erro ao iniciar interpretador: ${error instanceof Error ? error.message : String(error)}` }
+                });
+            }
         } else if (command === 'continue') {
             this.writeDbg('c\n');
             this.send({ seq, type: 'response', request_seq: seq, success: true, command });
@@ -73,7 +219,10 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
         } else if (command === 'setBreakpoints') {
             const src = args.source?.path as string | undefined;
             const reqBps = (args.breakpoints || []) as Array<{ line: number }>;
-            this.output(`[Por Do Sol] Breakpoints recebidos para ${src ?? 'fonte desconhecida'}: ${reqBps.map(bp => bp.line).join(', ') || 'nenhum'}\n`);
+            
+            // Rastrear se há breakpoints ativos para decidir modo de execução
+            this.hasActiveBreakpoints = reqBps.length > 0;
+            
             let respBps: Array<{ verified: boolean; line?: number; message?: string }> = [];
             if (!src) {
                 respBps = reqBps.map(_ => ({ verified: false, message: 'Fonte desconhecida' }));
@@ -82,14 +231,17 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
             }
 
             if (src.endsWith('.pr')) {
-                // Mapear .pr para .pbc correspondente
-                const pbcPath = src.replace(/\.pr$/, '.pbc');
+                // Mapear .pr para .pbc correspondente no diretório build
+                const programDir = path.dirname(src);
+                const programName = path.basename(src, '.pr');
+                const buildDir = path.join(programDir, 'build');
+                const pbcPath = path.join(buildDir, `${programName}.pbc`);
                 
                 // Verificar se o .pbc existe
                 try {
                     const fs = require('fs');
                     if (!fs.existsSync(pbcPath)) {
-                        respBps = reqBps.map(bp => ({ verified: false, line: bp.line, message: 'Arquivo .pbc não encontrado. Compile o arquivo .pr primeiro.' }));
+                        respBps = reqBps.map(bp => ({ verified: false, line: bp.line, message: 'Arquivo .pbc não encontrado no diretório build/. Compile o arquivo .pr primeiro.' }));
                         this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { breakpoints: respBps } });
                         return;
                     }
@@ -121,7 +273,6 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
                     for (const x of toDel) this.writeDbg(`bp del ${x.codeId} ${x.ip}\n`);
                     for (const x of toAdd) this.writeDbg(`bp add ${x.codeId} ${x.ip}\n`);
                     this.sentBpsBySource.set(pbcPath, desired);
-                    this.output(`[Por Do Sol] ${desired.length} breakpoint(s) enviado(s) ao interpretador.\n`);
                     this.send({ seq, type: 'response', request_seq: seq, success: true, command, body: { breakpoints: respBps } });
                     
                 } catch (e) {
@@ -205,11 +356,60 @@ class PordosolInlineAdapter implements vscode.DebugAdapter, vscode.Disposable {
     private output(text: string) {
         this.send({ type: 'event', event: 'output', body: { category: 'stdout', output: text } });
     }
+    private outputGreen(text: string) {
+        const green = '\x1b[32m';
+        const reset = '\x1b[0m';
+        this.send({ type: 'event', event: 'output', body: { category: 'stdout', output: `${green}${text}${reset}` } });
+    }
+    private outputBlue(text: string) {
+        const blue = '\x1b[34m';
+        const reset = '\x1b[0m';
+        this.send({ type: 'event', event: 'output', body: { category: 'stdout', output: `${blue}${text}${reset}` } });
+    }
     private writeDbg(cmd: string) {
         try {
             if (this.proc?.stdin.writable) this.proc.stdin.write(cmd);
             else this.pendingDebugCommands.push(cmd);
         } catch { this.pendingDebugCommands.push(cmd); }
+    }
+
+    /**
+     * Compila um arquivo .pr para .pbc usando o compilador descoberto
+     */
+    private async compilarArquivo(arquivoPr: string, compiladorPath: string, cwd?: string, buildDir?: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            // Use the original working directory for compilation, but pass --output-dir flag
+            const workingDir = cwd || path.dirname(arquivoPr);
+            const args = ['--target=bytecode'];
+            
+            // Add --output-dir flag if buildDir is specified
+            if (buildDir) {
+                args.push(`--output-dir=${buildDir}`);
+            }
+            
+            args.push(arquivoPr);
+            
+            const proc = spawn(compiladorPath, args, { 
+                cwd: workingDir,
+                stdio: 'pipe'
+            });
+            
+            proc.stdout.on('data', data => this.output(data.toString()));
+            proc.stderr.on('data', data => this.output(data.toString()));
+            
+            proc.on('close', (code) => {
+                if (code === 0) {
+                    resolve();
+                } else {
+                    reject(new Error(`Compilação falhou com código ${code}`));
+                }
+            });
+            
+            proc.on('error', (err) => {
+                this.output(`[Por Do Sol] Erro ao executar compilador: ${err.message}\n`);
+                reject(err);
+            });
+        });
     }
 
     // Cria um índice simples do .pbc: para cada bloco DEFINE_* mapeia as linhas de corpo para IPs e codeIds
