@@ -678,9 +678,9 @@ connection.onCompletion(
                 data: 21
             },
             {
-                label: '@Nativo',
+                label: '[Nativo]',
                 kind: CompletionItemKind.Snippet,
-                insertText: '@Nativo("${1:Namespace::Metodo}")',
+                insertText: '[Nativo]("${1:Namespace::Metodo}")',
                 documentation: 'Atributo para marcar métodos que chamam código nativo do runtime',
                 detail: 'Atributo Nativo - Por Do Sol',
                 data: 72
@@ -700,7 +700,7 @@ connection.onCompletion(
             {
                 label: 'classe Console',
                 kind: CompletionItemKind.Snippet,
-                insertText: 'classe Console {\n\t@Nativo("Console::EscreverLinha")\n\tpúblico estatica externo vazio EscreverLinha(texto mensagem);\n\n\t@Nativo("Console::LerLinha")\n\tpúblico estatica externo texto LerLinha();\n}',
+                insertText: 'classe Console {\n\t[Nativo]("Console::EscreverLinha")\n\tpúblico estatica externo vazio EscreverLinha(texto mensagem);\n\n\t[Nativo]("Console::LerLinha")\n\tpúblico estatica externo texto LerLinha();\n}',
                 documentation: 'Declaração de classe Console com métodos nativos (sintaxe sistema-padrao)',
                 detail: 'Classe Console - Por Do Sol',
                 data: 74
@@ -708,7 +708,7 @@ connection.onCompletion(
             {
                 label: 'classe Arquivo',
                 kind: CompletionItemKind.Snippet,
-                insertText: 'classe Arquivo {\n\t@Nativo("Arquivo::LerTexto")\n\tpúblico estatica externo texto LerTexto(texto caminho);\n\n\t@Nativo("Arquivo::EscreverTexto")\n\tpúblico estatica externo vazio EscreverTexto(texto caminho, texto conteudo);\n}',
+                insertText: 'classe Arquivo {\n\t[Nativo]("Arquivo::LerTexto")\n\tpúblico estatica externo texto LerTexto(texto caminho);\n\n\t[Nativo]("Arquivo::EscreverTexto")\n\tpúblico estatica externo vazio EscreverTexto(texto caminho, texto conteudo);\n}',
                 documentation: 'Declaração de classe Arquivo com métodos nativos (sintaxe sistema-padrao)',
                 detail: 'Classe Arquivo - Por Do Sol',
                 data: 75
@@ -1391,15 +1391,15 @@ texto entrada = LerLinha();
 \`\`\``
             };
         } else if (item.data === 71) {
-            item.detail = 'Atributo @Nativo - Por Do Sol';
+            item.detail = 'Atributo [Nativo] - Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Atributo @Nativo**
+                value: `**Atributo [Nativo]**
 
 Marca métodos que chamam código nativo do runtime.
 
 \`\`\`
-@Nativo("Sistema::Console::EscreverLinha")
+[Nativo]("Sistema::Console::EscreverLinha")
 público vazio EscreverLinha(texto mensagem);
 \`\`\`
 
@@ -1429,10 +1429,10 @@ Declaração de classe Console com métodos nativos.
 
 \`\`\`
 classe Console {
-    @Nativo("Console::EscreverLinha")
+    [Nativo]("Console::EscreverLinha")
     público estatica vazio EscreverLinha(texto mensagem);
 
-    @Nativo("Console::LerLinha")
+    [Nativo]("Console::LerLinha")
     público estatica texto LerLinha();
 }
 \`\`\``
@@ -1447,10 +1447,10 @@ Declaração de classe Arquivo com métodos nativos.
 
 \`\`\`
 classe Arquivo {
-    @Nativo("Arquivo::LerTudo")
+    [Nativo]("Arquivo::LerTudo")
     público texto LerTudo(texto caminho);
 
-    @Nativo("Arquivo::Escrever")
+    [Nativo]("Arquivo::Escrever")
     público vazio Escrever(texto caminho, texto conteudo);
 }
 \`\`\``
@@ -1530,15 +1530,15 @@ público inteiro Idade {
 \`\`\``
             };
         } else if (item.data === 80) {
-            item.detail = 'Atributo @Nativo - Por Do Sol';
+            item.detail = 'Atributo [Nativo] - Por Do Sol';
             item.documentation = {
                 kind: MarkupKind.Markdown,
-                value: `**Atributo @Nativo**
+                value: `**Atributo [Nativo]**
 
 Marca métodos que chamam código nativo do runtime (sintaxe usada na biblioteca padrão sistema-padrao).
 
 \`\`\`
-@Nativo("Console::EscreverLinha")
+[Nativo]("Console::EscreverLinha")
 público estatica externo vazio EscreverLinha(texto mensagem);
 \`\`\`
 
@@ -1804,19 +1804,19 @@ async function computeDiagnostics(textDocument: TextDocument): Promise<Diagnosti
             }
         }
 
-        // Validação do atributo @Nativo (sintaxe atual do compilador)
-        if (trimmed.includes('@Nativo')) {
-            const arrobaRegex = /@Nativo\("([^"]+)"\)/;
-            const arrobaMatch = trimmed.match(arrobaRegex);
+        // Validação do atributo [Nativo] (sintaxe atual do compilador)
+        if (trimmed.includes('[Nativo')) {
+            const colcheteRegex = /\[Nativo\("([^"]+)"\)\]/;
+            const colcheteMatch = trimmed.match(colcheteRegex);
             
-            if (!arrobaMatch) {
+            if (!colcheteMatch) {
                 diagnostics.push({
                     severity: DiagnosticSeverity.Error,
                     range: {
-                        start: { line: index, character: trimmed.indexOf('@Nativo') },
+                        start: { line: index, character: trimmed.indexOf('[Nativo') },
                         end: { line: index, character: line.length }
                     },
-                    message: 'Sintaxe do atributo Nativo incorreta - use @Nativo("Namespace::Metodo")',
+                    message: 'Sintaxe do atributo Nativo incorreta - use [Nativo("Namespace::Metodo")]',
                     source: 'Por Do Sol Language Server',
                     code: 'malformed-nativo-attribute'
                 });
@@ -2492,11 +2492,11 @@ connection.onCodeAction(async (params: CodeActionParams): Promise<CodeAction[] |
         // Quick fix: Corrigir atributo Nativo
         if (code === 'malformed-nativo-attribute') {
             const line = lines[diagnostic.range.start.line];
-            const colchetesMatch = line.match(/\[Nativo\("([^"]+)"\)\]/);
+            const arrobaMatch = line.match(/[Nativo]\("([^"]+)"\)/);
             
-            if (colchetesMatch) {
-                const namespace = colchetesMatch[1];
-                const newText = `@Nativo("${namespace}")`;
+            if (arrobaMatch) {
+                const namespace = arrobaMatch[1];
+                const newText = `[Nativo("${namespace}")]`;
                 const edit = TextDocumentEdit.create(
                     { uri: document.uri, version: document.version },
                     [
@@ -2508,7 +2508,7 @@ connection.onCodeAction(async (params: CodeActionParams): Promise<CodeAction[] |
                 );
 
                 codeActions.push({
-                    title: 'Converter para @Nativo (sintaxe atual)',
+                    title: 'Converter para [Nativo] (sintaxe atual)',
                     kind: CodeActionKind.QuickFix,
                     edit: { documentChanges: [edit] },
                     diagnostics: [diagnostic]

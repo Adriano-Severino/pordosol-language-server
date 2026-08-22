@@ -233,7 +233,7 @@
             "patterns": [
                 {
                     "name": "meta.attribute.cs",
-                    "match": "@\\w+"
+                    "match": "\\[\\w+"
                 }
             ]
         },
